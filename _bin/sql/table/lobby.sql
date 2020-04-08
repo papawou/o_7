@@ -47,7 +47,7 @@ CREATE TABLE lobby_users(
   ban_resolved_at timestamptz,
 
   bit_roles integer NOT NULL DEFAULT 0,
-  bit_auth integer NOT NULL DEFAULT 0, --SpecificPermissionsUser
+  bit_auth integer NOT NULL DEFAULT 0, --Specific Permissions User
   cbit_auth integer NOT NULL DEFAULT 0, --SPU & roles_auth
 
   CHECK((fk_member IS NOT NULL AND ban_resolved_at < NOW() --IS MEMBER
