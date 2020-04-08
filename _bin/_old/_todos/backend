@@ -1,0 +1,7 @@
+JWT
+    res.status(401) if user don't exist in check token for express api ?
+    (think: how handle for sockets ?)
+    CUSTOM 401 unauth issue for action too cause disconnect ?
+
+EXPRESS
+    res.status(204) if no content to return

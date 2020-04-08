@@ -1,0 +1,9 @@
+<Lobby />
+    socket.on('joinLobby')
+        case -> if two tabs are opens same account
+        effect -> same members duplicated
+        wanted -> one member
+
+    solution -> 1) prevent addmember if already same member
+             -> 2) BACKEND: prevent Socketio emit.joinLobby if already user in lobby (* best performance)
+    

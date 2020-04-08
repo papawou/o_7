@@ -1,0 +1,16 @@
+AUTHORIZATION
+- in postgres func
+
+- in business logic layer
+    - with jwt
+        - send
+            in headers
+            in params
+        - claim
+            for lobby_member
+                jti - JWT PRIMARY KEY (encoded sub id ?)
+                _version: 0 //for checking blacklist jwt iss and version ?
+                sub: {id_lobby: , id_viewer:}
+                _sub_type: "lobbymember
+                _roles: [ROLES]
+                _joined_at:

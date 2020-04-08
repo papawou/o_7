@@ -1,0 +1,6 @@
+REACT
+    update Components variables user.name to user.username
+    check how handle error 204
+
+REACT GAMES
+    send games components from express

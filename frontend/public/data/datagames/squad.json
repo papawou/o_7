@@ -1,0 +1,17 @@
+{
+    "id_game": "squad",
+    "default": {
+        "platform": "pc",
+        "config": {
+            "partyType": "any"
+        },
+        "cv": {
+            "config": {
+                "role": "any"
+            }
+        }
+    },
+    "platforms": [
+        "pc"
+    ]
+}

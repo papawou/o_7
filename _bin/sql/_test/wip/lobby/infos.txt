@@ -1,0 +1,19 @@
+CONDITION: USER CAN BE MEMBER OR BANNED
+
+? banned relate to authorization
+
+- two tables lobby_members, lobby_bans
+    - AUTH_LOGIC ensures condition
+
+- big table lobby_users(member.data + banned.data) (sql ensures condition)
+    - SQL enforce references
+        - AUTH same row
+    - LOGIC enforce references
+        - AUTH same row
+
+ 1/ tableA OR tableB
+ 2/ tableC = tableA+tableB
+
+ authTable + tableC
+ AuthTableC = authTable + tableC
+ AuthTable + tableA OR tableB
