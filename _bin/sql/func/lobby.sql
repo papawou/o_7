@@ -74,7 +74,7 @@ __cbit_auth integer;
 __was_member boolean;
 BEGIN
     SELECT bit_roles, cbit_auth INTO __bit_roles, __cbit_auth FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer FOR SHARE;
-    IF ((__cbit_auth & 2) > 0) IS FALSE OR NOT FOUND THEN RAISE EXCEPTION 'not auth'; END IF;
+    IF ((__cbit_auth & 2) > 0) IS FALSE OR NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     INSERT INTO lobby_users
         (id_lobby, id_user, ban_resolved_at)
     VALUES
@@ -82,7 +82,7 @@ BEGIN
     ON CONFLICT ON CONSTRAINT lobby_users_pkey DO UPDATE
         SET ban_resolved_at=_ban_time, fk_member=NULL, id_cv=NULL, joined_at=NULL
     WHERE __bit_roles > bit_roles  RETURNING fk_member IS NOT NULL INTO __was_member ;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not auth'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
     COMMIT;
     IF(__was_member) THEN
         UPDATE lobbys SET size=size+1 WHERE id=_id_lobby;
@@ -94,16 +94,16 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION lobby_unban_user(IN _id_viewer integer, _id_lobby integer, IN _id_user integer, OUT success_ boolean) AS $$
 BEGIN
     PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND id_user=_id_viewer AND cbit_auth&2 > 0 FOR SHARE;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not auth'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     UPDATE lobby_users SET ban_resolved_at=null WHERE id_lobby=_id_lobby AND id_user=_id_user AND ban_resolved_at IS NOT NULL;
-    IF NOT FOUND THEN RAISE EXCEPTION 'user not found'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
 END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_promote_user(IN _id_viewer integer, _id_lobby integer, IN _id_user integer, OUT success_ boolean) AS $$
 BEGIN
     PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND id_user=_id_viewer AND bit_roles&2 > 0 FOR SHARE;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not auth'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     UPDATE lobby_users
       SET
         bit_roles=1,
@@ -112,13 +112,14 @@ BEGIN
           id_lobby=_id_lobby
       AND fk_member=_id_user
       AND bit_roles != 1;
-    IF NOT FOUND THEN RAISE EXCEPTION 'user unfound'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
 END
 $$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION lobby_unpromote_user(IN _id_viewer integer, _id_lobby integer, IN _id_user integer, OUT success_ boolean) AS $$
 BEGIN
     PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND id_user=_id_viewer AND bit_roles&2 > 0 FOR SHARE;
-    IF NOT FOUND THEN RAISE EXCEPTION 'not auth'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     UPDATE lobby_users SET
         bit_roles=0,
         cbit_auth=(SELECT bit_auth_member FROM lobbys WHERE id=_id_lobby FOR SHARE)|bit_auth
@@ -126,6 +127,6 @@ BEGIN
           id_lobby=_id_lobby
       AND fk_member=_id_user
       AND bit_roles != 0;
-    IF NOT FOUND THEN RAISE EXCEPTION 'user unfound'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
 END
 $$ LANGUAGE plpgsql;

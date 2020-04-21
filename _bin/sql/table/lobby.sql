@@ -1,5 +1,10 @@
 DROP TABLE IF EXISTS lobbys, lobby_users, lobby_cvs CASCADE;
 /*
+action:
+    ban / unban
+    promote / unpromote to moderator
+    set_spu
+
 code_roles: is_owner is_moderator
 code_auth: can_kick can_invite
 */
