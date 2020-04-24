@@ -43,6 +43,7 @@ CREATE TABLE lobby_users(
   --/member
   fk_member integer REFERENCES users UNIQUE,
   CHECK(fk_member=id_user),
+  is_owner boolean NOT NULL DEFAULT FALSE,
 
   id_cv integer REFERENCES lobby_cvs,
   FOREIGN KEY (id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
@@ -50,10 +51,6 @@ CREATE TABLE lobby_users(
   --\member
   --auth
   ban_resolved_at timestamptz,
-
-  bit_roles integer NOT NULL DEFAULT 0,
-  bit_auth integer NOT NULL DEFAULT 0, --Specific Permissions User
-  cbit_auth integer NOT NULL DEFAULT 0, --SPU & roles_auth
 
   CHECK((fk_member IS NOT NULL AND ban_resolved_at < NOW() --IS MEMBER
              AND joined_at IS NOT NULL)
