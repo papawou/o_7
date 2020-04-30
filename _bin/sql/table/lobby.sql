@@ -23,9 +23,6 @@ CREATE TABLE lobbys(
     size integer NOT NULL,
     CHECK(0 <= size AND size <= max_size),
 
-    bit_auth_moderator integer NOT NULL DEFAULT 3,
-    bit_auth_member integer NOT NULL DEFAULT 1,
-
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
