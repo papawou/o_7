@@ -23,6 +23,9 @@ CREATE TABLE lobbys(
     size integer NOT NULL,
     CHECK(0 <= size AND size <= max_size),
 
+    check_join boolean NOT NULL DEFAULT FALSE,
+    auth_default integer NOT NULL DEFAULT 1,
+
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
@@ -53,8 +56,11 @@ CREATE TABLE lobby_users(
              AND joined_at IS NOT NULL)
       OR(ban_resolved_at >= NOW() AND fk_member IS NULL --IS BANNED
              AND id_cv IS NULL
-             AND joined_at IS NULL))
+             AND joined_at IS NULL)),
   --DELETE IF fk_member IS NULL AND ban_resolved_at < NOW() cronJOB ?
+  allowed_perms integer NOT NULL DEFAULT 1,
+  specific_perms integer NOT NULL DEFAULT 0,
+  cached_perms integer NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX lobby_members ON lobby_users(id_lobby, fk_member);
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
