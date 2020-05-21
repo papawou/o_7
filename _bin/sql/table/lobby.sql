@@ -1,30 +1,32 @@
 DROP TABLE IF EXISTS lobbys, lobby_users, lobby_cvs CASCADE;
+DROP TYPE IF EXISTS lobby_relation CASCADE;
 /*
-action:
-    ban / unban
-    promote / unpromote to moderator
-    set_spu
-
-code_roles: is_owner is_moderator
-code_auth: can_kick can_invite
+code_auth: can_invite
 */
+CREATE TYPE lobby_relation AS ENUM('FOLLOWER', 'FRIEND');
 CREATE TABLE lobbys(
     id bigserial PRIMARY KEY,
-    id_owner integer REFERENCES users NOT NULL,
 
     id_game integer REFERENCES games NOT NULL,
     id_platform integer REFERENCES platforms NOT NULL,
     id_cross integer DEFAULT NULL,
     FOREIGN KEY(id_game, id_platform) REFERENCES game_platforms(id_game, id_platform),
     FOREIGN KEY (id_game, id_platform, id_cross) REFERENCES game_platforms(id_game, id_platform, id_cross),
-
+    --SIZE
     max_size integer NOT NULL,
     CHECK(max_size > 1),
     size integer NOT NULL,
     CHECK(0 <= size AND size <= max_size),
-
+    --PRIVACY
     check_join boolean NOT NULL DEFAULT FALSE,
+    is_private boolean NOT NULL DEFAULT FALSE, --only invitations allowed
+    relation_only lobby_relation,
+    exp_link varchar(5) NOT NULL DEFAULT 'AAAAA',
+    --AUTH
+    id_owner integer REFERENCES users NOT NULL,
     auth_default integer NOT NULL DEFAULT 1,
+    auth_friend integer NOT NULL DEFAULT 1,
+    auth_follower integer NOT NULL DEFAULT 1,
 
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
@@ -84,3 +86,5 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER check_lobbys_users_is_banned BEFORE UPDATE OF fk_member, ban_resolved_at ON lobby_users
     FOR EACH ROW EXECUTE FUNCTION check_lobby_user();
+
+INSERT INTO

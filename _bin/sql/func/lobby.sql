@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION lobby_create(IN _id_user integer, IN _id_game integer, IN _id_platform integer, IN _id_cross integer, IN _max_size integer, OUT id_lobby_ integer) AS $$
+CREATE OR REPLACE FUNCTION lobby_create(IN _id_user integer, IN _id_game integer, IN _id_platform integer, IN _id_cross integer, IN _max_size integer, IN  OUT id_lobby_ integer) AS $$
 BEGIN
     SET CONSTRAINTS ALL DEFERRED;
     INSERT INTO lobbys
@@ -7,31 +7,43 @@ BEGIN
         (_id_user, _id_game, _id_platform, _id_cross, _max_size, _max_size-1)
     RETURNING id INTO id_lobby_;
     INSERT INTO lobby_users
-        (id_lobby, id_user, fk_member, bit_roles, cbit_auth, joined_at)
+        (id_lobby, id_user, fk_member, joined_at)
     VALUES
-        (_id_user, id_lobby_, _id_user, 2, 3, NOW());
+        (_id_user, id_lobby_, _id_user, NOW());
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_join(IN _id_user integer, IN _id_lobby integer, IN _id_cv integer, OUT success_ boolean) AS $$
 DECLARE
     __bit_auth_member integer;
+    __check_join boolean;
 BEGIN
     UPDATE lobbys
         SET size=lobbys.size-1
-        WHERE id=_id_lobby
-    RETURNING bit_auth_member INTO __bit_auth_member;
+        WHERE id=_id_lobby;
+
+    SELECT
+        CASE
+        WHEN user_user.status='FRIEND'
+            THEN lobbys.auth_friend
+        WHEN user_user.status='FOLLOWER' AND relation_only!='FRIEND'
+            THEN lobbys.auth_follower
+        WHEN user_user.status IS NULL AND relation_only IS NULL
+            THEN lobbys.auth_default
+        END, check_join
+    INTO __bit_auth_member, __check_join FROM lobbys
+        JOIN user_user ON id_user=lobbys.id_owner AND id_target=_id_user
+    WHERE lobbys.id=_id_lobby AND is_private IS FALSE;
 
     INSERT INTO lobby_users
-        (id_user, fk_member, id_lobby, id_cv, joined_at, cbit_auth)
+        (id_user, fk_member, id_lobby, id_cv, joined_at)
     VALUES
-        (_id_user, _id_user, _id_lobby, _id_cv, NOW(), __bit_auth_member)
+        (_id_user, _id_user, _id_lobby, _id_cv, NOW())
     ON CONFLICT ON CONSTRAINT lobby_users_pkey DO UPDATE
-        SET fk_member=_id_user, id_cv=_id_cv, joined_at=NOW(), cbit_auth=bit_auth|__bit_auth_member
+        SET fk_member=_id_user, id_cv=_id_cv, joined_at=NOW()
     WHERE fk_member IS NULL;
-
     success_ := true;
-END;
+END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE PROCEDURE lobby_leave(IN _id_viewer integer, INOUT id_lobby_ integer) AS $$
@@ -69,12 +81,10 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE PROCEDURE lobby_ban_user(IN _id_viewer integer, _id_lobby integer, _id_user integer, _ban_time timestamptz, INOUT success_ boolean) AS $$
 DECLARE
-__bit_roles integer;
-__cbit_auth integer;
 __was_member boolean;
 BEGIN
-    SELECT bit_roles, cbit_auth INTO __bit_roles, __cbit_auth FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer FOR SHARE;
-    IF ((__cbit_auth & 2) > 0) IS FALSE OR NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
+    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer  AND is_owner IS TRUE FOR SHARE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     INSERT INTO lobby_users
         (id_lobby, id_user, ban_resolved_at)
     VALUES
@@ -82,7 +92,7 @@ BEGIN
     ON CONFLICT ON CONSTRAINT lobby_users_pkey DO UPDATE
         SET ban_resolved_at=_ban_time, fk_member=NULL, id_cv=NULL, joined_at=NULL
     WHERE __bit_roles > bit_roles  RETURNING fk_member IS NOT NULL INTO __was_member ;
-    IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
+    IF NOT FOUND THEN RAISE EXCEPTION 'user not in your lobby'; END IF;
     COMMIT;
     IF(__was_member) THEN
         UPDATE lobbys SET size=size+1 WHERE id=_id_lobby;
@@ -93,9 +103,13 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_unban_user(IN _id_viewer integer, _id_lobby integer, IN _id_user integer, OUT success_ boolean) AS $$
 BEGIN
-    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND id_user=_id_viewer AND cbit_auth&2 > 0 FOR SHARE;
+    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND id_user=_id_viewer AND is_owner IS TRUE FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
     UPDATE lobby_users SET ban_resolved_at=null WHERE id_lobby=_id_lobby AND id_user=_id_user AND ban_resolved_at IS NOT NULL;
     IF NOT FOUND THEN RAISE EXCEPTION 'invalid user'; END IF;
 END
 $$ LANGUAGE plpgsql;
+
+SELECT FROM lobbys
+    JOIN user_user ON user_user.id_user=LEAST(lobbys.id_owner, _id_user) AND id_target=GREATEST(lobbys.id_user, _id_user)
+WHERE k

@@ -1,3 +1,7 @@
+INSERT INTO
+
+
+/*
 CREATE TABLE lobbys(
     id bigserial PRIMARY KEY,
     id_owner integer REFERENCES users NOT NULL,
@@ -50,3 +54,5 @@ CREATE TABLE lobby_members(
   joined_at timestamptz NOT NULL DEFAULT NOW()
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
+
+*/
