@@ -19,12 +19,14 @@ const root = {
         func: sql('../../../../_bin/sql/func/lobby.sql')
     },
     user: {
-        table: sql('../../../../_bin/sql/table/user.sql')
+        table: sql('../../../../_bin/sql/table/user.sql'),
+        func: sql('../../../../_bin/sql/func/user.sql')
     },
     game: {
         table: sql('../../../../_bin/sql/table/game.sql')
     },
     utils: {
+        reset: sql('../../../../_bin/sql/utils/reset.sql'),
         populate: sql('../../../../_bin/sql/utils/populate.sql'),
     },
     test: {

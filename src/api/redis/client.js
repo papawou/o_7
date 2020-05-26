@@ -9,6 +9,7 @@ export const redis = new Redis({
 export const test = async () => {
     try {
         await redis.ping()
+        console.log('REDIS SUCCESS')
     }
     catch (err) {
         throw('/!\\ REDIS FAILED')

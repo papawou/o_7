@@ -27,13 +27,10 @@ export const resolvers = {
       await context.db.one("SELECT * FROM lobby_kickmember(${id_lobby}, ${id_user})", args.input)
       */
       try {
-        let res = await context.db.tx(async t => {
-
-          t.any("SELECT pg_sleep(30)")
-          t.any("SELECT FROM users WHERE id=1")
+        context.db.tx(async t => {
+          await t.one('SELECT pg_advisory_xact_lock(1)')
+          await t.one('SELECT pg_sleep(20)')
         })
-
-        console.log(res)
       }
       catch (err) {
         console.log(err)
@@ -63,7 +60,10 @@ const reset = async (root, args, context, info) => {
 }
 
 const clear = async (root, args, context, info) => {
+  await context.db.any(context.sql.utils.reset)
   await context.db.any(context.sql.user.table)
+  await context.db.any(context.sql.user.func)
+
   await context.db.any(context.sql.game.table)
 
   await context.db.any(context.sql.lobby.table)
