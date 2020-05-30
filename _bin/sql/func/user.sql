@@ -12,9 +12,7 @@ unfollow_user
 ban_user
 unban_user
 */
-/*
-  INSERT request_friends
-*/
+--friend
 CREATE OR REPLACE FUNCTION add_friend(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
@@ -29,10 +27,16 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  DELETE friend_request if viewer has diened or waiting his response
-*/
-CREATE OR REPLACE FUNCTION accept_friend_request(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION delete_friend(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
+BEGIN
+    SELECT pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
+    DELETE FROM user_friends WHERE id_usera=LEAST(_id_viewer, _id_target) AND id_userb=GREATEST(_id_viewer, _id_target);
+    IF FOUND THEN RETURN TRUE; ELSE RETURN FALSE; END IF;
+END
+$$ LANGUAGE plpgsql;
+
+--friend_request
+CREATE OR REPLACE FUNCTION friend_request(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     SELECT pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
     DELETE FROM user_friends_request
@@ -46,10 +50,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  deny current friend_request, still possible later to accept the friend_request
-*/
-CREATE OR REPLACE FUNCTION deny_friend_request(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION friend_request_deny(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     UPDATE user_friends_request
       SET status=(CASE WHEN id_usera=_id_viewer THEN 'DENIED_BY_A'::user_friends_request_status ELSE 'DENIED_BY_B'::user_friends_request_status END)
@@ -59,10 +60,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  delete friend_request if no response was given by target
-*/
-CREATE OR REPLACE FUNCTION cancel_friend_request(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION friend_request_cancel(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     DELETE FROM user_friends_request
       WHERE id_usera=LEAST(_id_viewer, _id_target)
@@ -72,20 +70,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  delete friend
-*/
-CREATE OR REPLACE FUNCTION delete_friend(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
-BEGIN
-    SELECT pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
-    DELETE FROM user_friends WHERE id_usera=LEAST(_id_viewer, _id_target) AND id_userb=GREATEST(_id_viewer, _id_target);
-    IF FOUND THEN RETURN TRUE; ELSE RETURN FALSE; END IF;
-END
-$$ LANGUAGE plpgsql;
-
-/*
-  follow user
-*/
+--follow
 CREATE OR REPLACE FUNCTION follow_user(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     SELECT pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
@@ -96,9 +81,6 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  unfollow user
-*/
 CREATE OR REPLACE FUNCTION unfollow_user(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
 BEGIN
     SELECT pg_advisory_xact_lock(hashtextextended('user_user:'||least(_id_viewer, _id_target),greatest(_id_viewer, _id_target)));
@@ -107,12 +89,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/*
-  insert ban
-  delete friends
-  delete followers
-  delete friends_requests
-*/
+--permissions
 CREATE OR REPLACE FUNCTION ban_user(_id_viewer integer, _id_target integer, _ban_resolved_at timestamptz) RETURNS boolean AS $$
 DECLARE
     __lobbys_id_owner record;
@@ -126,11 +103,13 @@ BEGIN
     DELETE FROM user_followers WHERE (id_follower=_id_viewer AND id_following=_id_target) OR (id_follower=_id_target AND id_following=_id_viewer);
     DELETE FROM user_friends_request WHERE id_usera=LEAST(_id_viewer, _id_target) AND id_userb=GREATEST(_id_viewer, _id_target);
 
-    FOR __lobbys_id_owner IN (SELECT id_lobby, id_user FROM lobby_members WHERE (id_user=_id_viewer OR id_user=_id_target) AND is_owner IS TRUE FOR SHARE) LOOP
-        DELETE FROM lobby_members WHERE id_lobby=__lobbys_id_owner.id_lobby AND id_user=(CASE WHEN __lobbys_id_owner.id_user=_id_viewer THEN _id_target ELSE _id_viewer END);
+    FOR __lobbys_id_owner IN (SELECT id_lobby, id_user as id_owner FROM lobby_members WHERE (id_user=_id_viewer OR id_user=_id_target) AND is_owner IS TRUE FOR SHARE) LOOP
+        SELECT pg_advisory_xact_lock(hashtextextended('lobby_user:'||__lobbys_id_owner.id_lobby, (CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END)));
+        DELETE FROM lobby_invitations WHERE id_lobby=__lobbys_id_owner.id_lobby AND (id_user=(CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END) OR created_by=(CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END));
+        DELETE FROM lobby_join_requests WHERE id_lobby=__lobbys_id_owner.id_lobby AND id_user=(CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END);
+        DELETE FROM lobby_bans WHERE id_lobby=__lobbys_id_owner.id_lobby AND id_user=(CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END) ;
+        DELETE FROM lobby_members WHERE id_lobby=__lobbys_id_owner.id_lobby AND id_user=(CASE WHEN __lobbys_id_owner.id_owner=_id_viewer THEN _id_target ELSE _id_viewer END);
         IF FOUND THEN UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=__lobbys_id_owner.id_lobby ; END IF;
-        DELETE FROM lobby_join_requests WHERE id_user=_id_target OR id_user=(CASE WHEN __lobbys_id_owner.id_user=_id_viewer THEN _id_viewer ELSE _id_target END);
-        DELETE FROM lobby_bans WHERE id_lobby=__lobbys_id_owner.id_lobby AND id_user=(CASE WHEN __lobbys_id_owner.id_user=_id_viewer THEN _id_viewer ELSE _id_target END) ;
     END LOOP;
     RETURN TRUE;
 END

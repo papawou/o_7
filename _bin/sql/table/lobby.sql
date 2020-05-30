@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS lobbys, lobbys_slots, lobby_members, lobby_cvs, lobby_invitations, lobby_bans, lobby_join_requests CASCADE;
-DROP TYPE IF EXISTS lobby_privacy, lobby_join_request_status CASCADE;
+DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_cvs, lobby_invitations, lobby_bans, lobby_join_requests, lobby_invitations CASCADE;
+DROP TYPE IF EXISTS lobby_privacy, lobby_join_request_status, lobby_invitation_status CASCADE;
 /*
 code_auth: can_invite
 */
@@ -33,16 +33,16 @@ CREATE TABLE lobby_slots(
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
 CREATE TABLE lobby_cvs(
-    id bigserial PRIMARY KEY,
+    id integer NOT NULL,
     id_lobby integer REFERENCES lobbys NOT NULL,
-    UNIQUE(id_lobby, id)
+    PRIMARY KEY(id_lobby, id)
 );
 
 CREATE TABLE lobby_members(
   id_lobby integer REFERENCES lobbys NOT NULL,
   id_user integer REFERENCES users NOT NULL UNIQUE,
   PRIMARY KEY(id_lobby, id_user),
-  id_cv integer REFERENCES lobby_cvs,
+  id_cv integer,
   FOREIGN KEY (id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
 
   is_owner boolean NOT NULL DEFAULT FALSE, --cached_value
@@ -70,5 +70,20 @@ CREATE TABLE lobby_join_requests(
     id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
     PRIMARY KEY(id_lobby, id_user),
-    status lobby_join_request_status NOT NULL DEFAULT 'WAITING_LOBBY'::lobby_join_request_status
+    id_cv integer,
+    FOREIGN KEY(id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
+    status lobby_join_request_status NOT NULL DEFAULT 'WAITING_LOBBY'::lobby_join_request_status,
+    created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TYPE lobby_invitation_status AS ENUM('WAITING_BOTH', 'WAITING_USER', 'WAITING_LOBBY', 'DENIED_BY_LOBBY', 'DENIED_BY_USER');
+CREATE TABLE lobby_invitations(
+    id_lobby integer REFERENCES lobbys NOT NULL,
+    id_user integer REFERENCES users NOT NULL,
+    PRIMARY KEY(id_lobby, id_user),
+    id_cv integer,
+    FOREIGN KEY(id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
+    status lobby_invitation_status NOT NULL DEFAULT 'WAITING_BOTH'::lobby_invitation_status,
+    created_by integer REFERENCES users NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW()
 );
