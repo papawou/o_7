@@ -32,18 +32,10 @@ CREATE TABLE lobby_slots(
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
-CREATE TABLE lobby_cvs(
-    id integer NOT NULL,
-    id_lobby integer REFERENCES lobbys NOT NULL,
-    PRIMARY KEY(id_lobby, id)
-);
-
 CREATE TABLE lobby_members(
   id_lobby integer REFERENCES lobbys NOT NULL,
   id_user integer REFERENCES users NOT NULL UNIQUE,
   PRIMARY KEY(id_lobby, id_user),
-  id_cv integer,
-  FOREIGN KEY (id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
 
   is_owner boolean NOT NULL DEFAULT FALSE, --cached_value
   UNIQUE(id_lobby, is_owner),
@@ -70,12 +62,8 @@ CREATE TABLE lobby_join_requests(
     id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
     PRIMARY KEY(id_lobby, id_user),
-    id_cv integer[], --IF NULL ask for everything if []
-    FOREIGN KEY(id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
     status lobby_join_request_status NOT NULL DEFAULT 'WAITING_LOBBY'::lobby_join_request_status,
-    created_at timestamptz NOT NULL DEFAULT NOW(),
-
-    history json --[ {asked_by: 'user' || 'lobby', id_cv: [X]} ]
+    created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE lobby_invitations(
@@ -84,16 +72,5 @@ CREATE TABLE lobby_invitations(
     PRIMARY KEY(id_user,created_by),
     UNIQUE(id_user,created_by),
     id_lobby integer REFERENCES lobbys NOT NULL,
-    id_cv integer,
-    FOREIGN KEY (id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
-    created_at timestamptz NOT NULL DEFAULT NOW(),
-    history json --[ {asked_by:'user' || 'lobby', id_cv: [ X ]} ]
+    created_at timestamptz NOT NULL DEFAULT NOW()
 );
-
-/*
-1 - request join with cv (null means every cv)
-loop
-2 - lobby accept / decline / propose other cv
-3 - user confirm / cancel / propose another cv
-end loop
-*/
