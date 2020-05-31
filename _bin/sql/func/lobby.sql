@@ -35,13 +35,13 @@ BEGIN
     INSERT INTO lobby_slots(id_lobby, free_slots, max_slots) VALUES(id_lobby_, _max_slots-1, _max_slots);
 
     INSERT INTO lobby_members
-        (id_lobby, id_user, id_cv, is_owner, allowed_perms, specific_perms, cached_perms)
+        (id_lobby, id_user, is_owner, allowed_perms, specific_perms, cached_perms)
     VALUES
-        (id_lobby_, _id_viewer, _id_cv, true, 1, 1, 1);
+        (id_lobby_, _id_viewer, true, 1, 1, 1);
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_join(_id_viewer integer, _id_lobby integer, _id_cv integer, exp_link varchar(5)) RETURNS integer AS $$
+CREATE OR REPLACE FUNCTION lobby_join(_id_viewer integer, _id_lobby integer, exp_link varchar(5)) RETURNS integer AS $$
 DECLARE
     __lobby_params lobbys%rowtype;
     __viewer_perms integer;
@@ -64,12 +64,12 @@ BEGIN
     PERFORM FROM lobby_bans WHERE id_lobby=__lobby_params.id AND id_user=_id_viewer AND ban_resolved_at < NOW();
     IF FOUND THEN RAISE EXCEPTION 'lobby_ban'; END IF;
     IF __lobby_params.check_join IS FALSE THEN
-      INSERT INTO lobby_members(id_lobby, id_user, id_cv, cached_perms) VALUES(__lobby_params.id, _id_viewer, _id_cv, __viewer_perms);
+      INSERT INTO lobby_members(id_lobby, id_user, cached_perms) VALUES(__lobby_params.id, _id_viewer, __viewer_perms);
       UPDATE lobby_slots SET free_slots=free_slots-1 WHERE id_lobby=_id_lobby;
     ELSE
       PERFORM FROM lobby_members WHERE id_user=_id_viewer;
       IF FOUND THEN RAISE EXCEPTION 'already_member'; END IF;
-      INSERT INTO lobby_join_requests(id_lobby, id_user, id_cv) VALUES(__lobby_params.id, _id_viewer, _id_cv);
+      INSERT INTO lobby_join_requests(id_lobby, id_user) VALUES(__lobby_params.id, _id_viewer);
     END IF;
 END
 $$ LANGUAGE plpgsql;
@@ -101,14 +101,13 @@ CREATE OR REPLACE FUNCTION lobby_join_request_confirm(_id_viewer integer, _id_lo
 DECLARE
     __lobby_params lobbys;
     __viewer_perms integer;
-    __id_cv integer;
 BEGIN
     SELECT * INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
 
     SELECT pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner),greatest(_id_viewer, __lobby_params.id_owner)));
     SELECT pg_advisory_xact_lock(hashtextextended('lobby_user:'||_id_lobby, _id_viewer));
 
-    DELETE FROM lobby_join_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND status='WAITING_USER'::lobby_join_request_status RETURNING id_cv INTO __id_cv;
+    DELETE FROM lobby_join_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND status='WAITING_USER'::lobby_join_request_status;
     IF NOT FOUND THEN RAISE EXCEPTION 'lobby_join_request not found'; END IF;
 
     PERFORM FROM user_friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
