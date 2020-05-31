@@ -3,14 +3,20 @@ create X
 join X
 leave X
 
-confirm_join_request X
-accept_join_request X
-deny_join_request X
+JOIN_REQUEST
+--candidate
+    confirm X --confirm join_request
+    ask_cv X  --ask for another cv
+    cancel X  --cancel join_request
+--lobby
+    ask_cv X  --ask for another cv
+    accept X  --accept join_request
+    deny X    --decline join_request
+
 
 invite x
 accept_invite x
 decline_invite x
-confirm_invite x
 
 ban X
 
@@ -63,7 +69,7 @@ BEGIN
     ELSE
       PERFORM FROM lobby_members WHERE id_user=_id_viewer;
       IF FOUND THEN RAISE EXCEPTION 'already_member'; END IF;
-      INSERT INTO lobby_join_requests(id_lobby, id_user) VALUES(__lobby_params.id, _id_viewer);
+      INSERT INTO lobby_join_requests(id_lobby, id_user, id_cv) VALUES(__lobby_params.id, _id_viewer, _id_cv);
     END IF;
 END
 $$ LANGUAGE plpgsql;

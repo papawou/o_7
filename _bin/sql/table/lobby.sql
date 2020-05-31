@@ -70,20 +70,30 @@ CREATE TABLE lobby_join_requests(
     id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
     PRIMARY KEY(id_lobby, id_user),
-    id_cv integer,
+    id_cv integer[], --IF NULL ask for everything if []
     FOREIGN KEY(id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
     status lobby_join_request_status NOT NULL DEFAULT 'WAITING_LOBBY'::lobby_join_request_status,
-    created_at timestamptz NOT NULL DEFAULT NOW()
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+
+    history json --[ {asked_by: 'user' || 'lobby', id_cv: [X]} ]
 );
 
-CREATE TYPE lobby_invitation_status AS ENUM('WAITING_BOTH', 'WAITING_USER', 'WAITING_LOBBY', 'DENIED_BY_LOBBY', 'DENIED_BY_USER');
 CREATE TABLE lobby_invitations(
-    id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
-    PRIMARY KEY(id_lobby, id_user),
-    id_cv integer,
-    FOREIGN KEY(id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
-    status lobby_invitation_status NOT NULL DEFAULT 'WAITING_BOTH'::lobby_invitation_status,
     created_by integer REFERENCES users NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT NOW()
+    PRIMARY KEY(id_user,created_by),
+    UNIQUE(id_user,created_by),
+    id_lobby integer REFERENCES lobbys NOT NULL,
+    id_cv integer,
+    FOREIGN KEY (id_lobby, id_cv) REFERENCES lobby_cvs(id_lobby, id),
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    history json --[ {asked_by:'user' || 'lobby', id_cv: [ X ]} ]
 );
+
+/*
+1 - request join with cv (null means every cv)
+loop
+2 - lobby accept / decline / propose other cv
+3 - user confirm / cancel / propose another cv
+end loop
+*/
