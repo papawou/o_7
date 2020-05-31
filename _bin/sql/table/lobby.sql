@@ -65,7 +65,7 @@ CREATE TABLE lobby_bans(
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
-CREATE TYPE lobby_join_request_status AS ENUM('WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_LOBBY');
+CREATE TYPE lobby_join_request_status AS ENUM('WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_LOBBY', 'NEED_CV_CHANGES');
 CREATE TABLE lobby_join_requests(
     id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE lobby_invitations(
 /*
 1 - request join with cv (null means every cv)
 loop
-2 - lobby accept / decline / propose other cv
-3 - user confirm / cancel / propose another cv
+2 - lobby accept / propose other cvs / decline
+3 - user confirm / propose another cvs / cancel
 end loop
 */
