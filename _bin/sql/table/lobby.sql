@@ -32,48 +32,31 @@ CREATE TABLE lobby_slots(
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
-CREATE TABLE lobby_members(
-  id_lobby integer REFERENCES lobbys NOT NULL,
-  id_user integer REFERENCES users NOT NULL UNIQUE,
-  PRIMARY KEY(id_lobby, id_user),
 
-  is_owner boolean NOT NULL DEFAULT FALSE, --cached_value
-  UNIQUE(id_lobby, is_owner),
-
-  specific_perms integer NOT NULL DEFAULT 0,
-  cached_perms integer NOT NULL DEFAULT 0,
-
-  joined_at timestamptz NOT NULL DEFAULT NOW()
-);
-ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
-
-CREATE TABLE lobby_bans(
-  id_lobby integer REFERENCES lobbys NOT NULL,
-  id_user integer REFERENCES users NOT NULL,
-  PRIMARY KEY(id_lobby, id_user),
-  ban_resolved_at timestamptz NOT NULL DEFAULT NOW(),
-  created_by integer REFERENCES users NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT NOW()
-);
-
-/*
-WAITING_LOBBY confirm user
-WAITING_USER confirm for join
-*/
 CREATE TYPE lobby_join_request_status AS ENUM('WAITING_BOTH', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY', 'WAITING_CONFIRM_USER');
-CREATE TABLE lobby_join_requests(
-    id_lobby integer REFERENCES lobbys NOT NULL,
+CREATE TABLE lobby_users(
     id_user integer REFERENCES users NOT NULL,
-    PRIMARY KEY(id_lobby, id_user),
-    status lobby_join_request_status NOT NULL DEFAULT 'WAITING_LOBBY'::lobby_join_request_status,
-    created_at timestamptz NOT NULL DEFAULT NOW()
+    id_lobby integer REFERENCES lobbys NOT NULL,
+    PRIMARY KEY(id_user, id_lobby),
+    --member
+    fk_member integer REFERENCES users UNIQUE,
+    CHECK(id_user=fk_member),
+    is_owner boolean NOT NULL DEFAULT FALSE,
+    allowed_perms integer NOT NULL DEFAULT 1,
+    specific_perms integer NOT NULL DEFAULT 0,
+    cached_perms integer NOT NULL DEFAULT 0,
+    joined_at timestamptz,
+    --ban
+    ban_resolved_at timestamptz,
+    --invitation/lobby_join_request
+    status lobby_join_request_status
 );
+ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
 
 CREATE TABLE lobby_invitations(
     id_user integer REFERENCES users NOT NULL,
     created_by integer REFERENCES users NOT NULL,
     PRIMARY KEY(id_user,created_by),
     id_lobby integer REFERENCES lobbys NOT NULL,
-    seen boolean NOT NULL DEFAULT FALSE,
-    created_at timestamptz NOT NULL DEFAULT NOW()
+    seen boolean NOT NULL DEFAULT FALSE
 );

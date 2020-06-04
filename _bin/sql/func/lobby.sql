@@ -70,19 +70,14 @@ BEGIN
             RAISE EXCEPTION 'unauth';
         END IF;
     END IF;
-    --lobby_bans
-    SELECT pg_advisory_xact_lock(hashtextextended('lobby_user:'||_id_lobby, _id_viewer));
-    PERFORM FROM lobby_bans WHERE id_lobby=__lobby_params.id AND id_user=_id_viewer AND ban_resolved_at < NOW();
-    IF FOUND THEN RAISE EXCEPTION 'lobby_ban'; END IF;
 
-    IF __lobby_params.check_join IS FALSE THEN
-      INSERT INTO lobby_members(id_lobby, id_user, cached_perms) VALUES(__lobby_params.id, _id_viewer, __viewer_perms);
-      UPDATE lobby_slots SET free_slots=free_slots-1 WHERE id_lobby=_id_lobby;
-    ELSE
-      PERFORM FROM lobby_members WHERE id_user=_id_viewer AND id_lobby=_id_lobby;
-      IF FOUND THEN RAISE EXCEPTION 'already_member'; END IF;
-      INSERT INTO lobby_join_requests(id_lobby, id_user) VALUES(__lobby_params.id, _id_viewer);
-    END IF;
+    INSERT INTO lobby_users(id_user, id_lobby, fk_member, status)
+        VALUES(_id_viewer, _id_lobby, CASE WHEN __lobby_params.check_join IS FALSE THEN _id_viewer END, CASE WHEN __lobby_params.check_join THEN 'WAITING_LOBBY' END)
+    ON CONFLICT (id_user, id_lobby) DO UPDATE SET
+                              status=(CASE WHEN __lobby_params.check_join IS FALSE OR status='WAITING_USER' THEN NULL END),
+                              fk_member=(CASE WHEN __lobby_params.check_join IS FALSE OR status='WAITING_USER' THEN _id_viewer END)
+    WHERE ban_resolved_at < NOW() OR fk_member IS NULL
+    RETURNING fk_member, status;
 END
 $$ LANGUAGE plpgsql;
 
