@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_cvs, lobby_invitations, lobby_bans, lobby_join_requests, lobby_invitations CASCADE;
-DROP TYPE IF EXISTS lobby_privacy, lobby_join_request_status, lobby_invitation_status CASCADE;
+DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_bans, lobby_join_requests, lobby_invitations CASCADE;
+DROP TYPE IF EXISTS lobby_privacy, lobby_join_request_status CASCADE;
 /*
 code_auth: can_invite
 */
@@ -40,7 +40,6 @@ CREATE TABLE lobby_members(
   is_owner boolean NOT NULL DEFAULT FALSE, --cached_value
   UNIQUE(id_lobby, is_owner),
 
-  allowed_perms integer NOT NULL DEFAULT 1,
   specific_perms integer NOT NULL DEFAULT 0,
   cached_perms integer NOT NULL DEFAULT 0,
 
@@ -57,7 +56,11 @@ CREATE TABLE lobby_bans(
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
-CREATE TYPE lobby_join_request_status AS ENUM('WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_LOBBY');
+/*
+WAITING_LOBBY confirm user
+WAITING_USER confirm for join
+*/
+CREATE TYPE lobby_join_request_status AS ENUM('WAITING_BOTH', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY', 'WAITING_CONFIRM_USER');
 CREATE TABLE lobby_join_requests(
     id_lobby integer REFERENCES lobbys NOT NULL,
     id_user integer REFERENCES users NOT NULL,
@@ -70,7 +73,7 @@ CREATE TABLE lobby_invitations(
     id_user integer REFERENCES users NOT NULL,
     created_by integer REFERENCES users NOT NULL,
     PRIMARY KEY(id_user,created_by),
-    UNIQUE(id_user,created_by),
     id_lobby integer REFERENCES lobbys NOT NULL,
+    seen boolean NOT NULL DEFAULT FALSE,
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
