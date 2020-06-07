@@ -63,14 +63,7 @@ CREATE TABLE lobby_users(
     ban_resolved_at timestamptz,
     --invitation/lobby_join_request
     status lobby_join_request_status,
-    updated_at timestamptz
+    created_by integer REFERENCES users NOT NULL,
+    last_attempt timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
-
-CREATE TABLE lobby_invitations(
-    id_user integer REFERENCES users NOT NULL,
-    created_by integer REFERENCES users NOT NULL,
-    PRIMARY KEY(id_user,created_by),
-    id_lobby integer REFERENCES lobbys NOT NULL,
-    FOREIGN KEY(id_user, id_lobby) REFERENCES lobby_users(id_lobby, id_user)
-);
