@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_bans, lobby_join_requests, lobby_invitations, lobby_users CASCADE;
+DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_users, lobby_invitations CASCADE;
 DROP TYPE IF EXISTS lobby_privacy, lobby_join_request_status CASCADE;
 /*
 code_auth: can_invite
@@ -41,21 +41,9 @@ DENIED_BY_LOBBY --stop transact
 WAITING_CONFIRM_LOBBY --to WAITING_USER OR DENIED_CONFIRM //invitation hidden
 DENIED_CONFIRM --delete lobby_join_request and delete lobby_invitations
 
-user invite
-    CREATE invitations
-    if not trust
-        CREATE lobby_users status='WAITING_CONFIRM_LOBBY'
-    if trust
-        CREATE lobby_users status='WAITING_USER'
-accept_invite/confirm
-    UPDATE lobby_users status='WAITING_USER'
-deny_confirm_invite
-    DELETE lobby_users status='WAITING_CONFIRM_LOBBY'
-    DELETE lobby_invitations
-lobby_deny_invite
-    UPDATE lobby_users status='DENIED_BY_LOBBY'
-user_deny_invite
-    DELETE lobby_users status='DENIED_BY_USER'
+confirm = check_join
+
+
 */
 
 CREATE TYPE lobby_join_request_status AS ENUM('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
@@ -71,11 +59,11 @@ CREATE TABLE lobby_users(
     allowed_perms integer NOT NULL DEFAULT 1,
     specific_perms integer NOT NULL DEFAULT 0,
     cached_perms integer NOT NULL DEFAULT 0,
-    joined_at timestamptz,
     --ban
     ban_resolved_at timestamptz,
     --invitation/lobby_join_request
-    status lobby_join_request_status
+    status lobby_join_request_status,
+    updated_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
 
