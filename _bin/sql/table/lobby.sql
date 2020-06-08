@@ -24,6 +24,7 @@ CREATE TABLE lobbys(
 
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
+
 CREATE TABLE lobby_slots(
     id_lobby integer REFERENCES lobbys PRIMARY KEY,
     free_slots integer NOT NULL DEFAULT 1,
@@ -42,8 +43,6 @@ WAITING_CONFIRM_LOBBY --to WAITING_USER OR DENIED_CONFIRM //invitation hidden
 DENIED_CONFIRM --delete lobby_join_request and delete lobby_invitations
 
 confirm = check_join
-
-
 */
 
 CREATE TYPE lobby_join_request_status AS ENUM('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
@@ -59,11 +58,13 @@ CREATE TABLE lobby_users(
     allowed_perms integer NOT NULL DEFAULT 1,
     specific_perms integer NOT NULL DEFAULT 0,
     cached_perms integer NOT NULL DEFAULT 0,
-    --ban
-    ban_resolved_at timestamptz,
+    joined_at timestamptz,
     --invitation/lobby_join_request
     status lobby_join_request_status,
     created_by integer REFERENCES users NOT NULL,
-    last_attempt timestamptz
+    last_attempt timestamptz,
+    token integer,
+    --ban
+    ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
