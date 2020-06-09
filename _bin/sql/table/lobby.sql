@@ -44,7 +44,6 @@ DENIED_CONFIRM --delete lobby_join_request and delete lobby_invitations
 
 confirm = check_join
 */
-
 CREATE TYPE lobby_join_request_status AS ENUM('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
 CREATE TABLE lobby_users(
     id_user integer REFERENCES users NOT NULL,
@@ -55,16 +54,19 @@ CREATE TABLE lobby_users(
     CHECK(id_user=fk_member),
     UNIQUE(id_lobby, fk_member),
     is_owner boolean NOT NULL DEFAULT FALSE,
-    allowed_perms integer NOT NULL DEFAULT 1,
     specific_perms integer NOT NULL DEFAULT 0,
     cached_perms integer NOT NULL DEFAULT 0,
     joined_at timestamptz,
     --invitation/lobby_join_request
     status lobby_join_request_status,
-    created_by integer REFERENCES users NOT NULL,
     last_attempt timestamptz,
     token integer,
     --ban
     ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
+
+CREATE TABLE lobby_invitations(
+  id_user integer REFERENCES users NOT NULL,
+  created_by integer REFERENCES users NOT NULL
+);

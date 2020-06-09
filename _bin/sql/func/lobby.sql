@@ -70,9 +70,8 @@ BEGIN
   
   INSERT INTO lobby_users (id_user, id_lobby, fk_member)
     VALUES (_id_viewer, _id_lobby, _id_viewer)
-    ON CONFLICT (id_user, id_lobby) DO UPDATE SET fk_member=_id_viewer,
-                                                  last_attempt=NOW()
-    WHERE fk_member IS NULL AND ban_resolved_at < NOW() AND status IS NULL;
+    ON CONFLICT (id_user, id_lobby) DO UPDATE SET fk_member=_id_viewer
+    WHERE fk_member IS NULL AND ban_resolved_at < NOW();
 
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby_users not found'; END IF;
   UPDATE lobby_slots SET free_slots=free_slots-1 WHERE id_lobby=_id_lobby;
@@ -84,7 +83,7 @@ DECLARE
   __was_owner boolean;
   __new_owner integer;
 BEGIN
-  UPDATE lobby_users SET fk_member=null, joined_at=null WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
+  DELETE FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
   IF NOT FOUND THEN RETURN true; END IF;
   
   IF __was_owner IS TRUE THEN
@@ -134,7 +133,7 @@ BEGIN
     VALUES (_id_viewer, _id_lobby, 'WAITING_LOBBY')
     ON CONFLICT (id_user, id_lobby) DO UPDATE SET status='WAITING_LOBBY'
     WHERE fk_member IS NULL
-      AND ban_resolved_at<NOW()
+      AND ban_resolved_at<NOW() 
       AND last_attempt+interval'00:01:00'<NOW()
       AND status NOT IN ('WAITING_USER', 'WAITING_LOBBY');
   
@@ -185,7 +184,6 @@ BEGIN
     WHERE id_user=_id_viewer
       AND id_lobby=_id_lobby
       AND status IN ('WAITING_LOBBY', 'WAITING_USER');
-  
   RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
@@ -199,7 +197,7 @@ BEGIN
   UPDATE lobby_users SET status='WAITING_USER'
     WHERE id_lobby=_id_lobby
       AND id_user=_id_user
-      AND status IN ('WAITING_LOBBY', 'DENIED_BY_LOBBY');
+      AND status IN ('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'DENIED_BY_LOBBY');
 END
 $$ LANGUAGE plpgsql;
 
@@ -208,11 +206,11 @@ BEGIN
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
 
-  UPDATE lobby_users SET status='DENIED_BY_LOBBY'::lobby_join_request_status,
+  UPDATE lobby_users SET status='DENIED_BY_LOBBY',
                          last_attempt=NOW()
     WHERE id_lobby=_id_lobby
       AND id_user=_id_user
-      AND status IN ('WAITING_LOBBY', 'WAITING_USER');
+      AND status IN ('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER');
 END
 $$ LANGUAGE plpgsql;
 
@@ -239,15 +237,17 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'viewer not member'; END IF;
 
   INSERT INTO lobby_users(id_lobby, id_user, status, created_by)
-    VALUES (_id_lobby, _id_target, CASE WHEN __trust_invite THEN 'WAITING_USER' ELSE 'WAITING_LOBBY' END, _id_viewer)
-    ON CONFLICT(id_lobby, id_user) DO UPDATE SET status=EXCLUDED.status
-      WHERE ban_resolved_at < NOW() OR fk_member IS NULL OR status NOT IN ('WAITING_USER', EXCLUDED.status);
+    VALUES (_id_lobby, _id_target, CASE WHEN __trust_invite THEN 'WAITING_USER' ELSE 'WAITING_CONFIRM_LOBBY' END, _id_viewer)
+    ON CONFLICT(id_lobby, id_user) DO UPDATE SET status=EXCLUDED.status, created_by=_id_viewer
+      WHERE ban_resolved_at < NOW()
+         AND fk_member IS NULL
+         AND (status NOT IN ('WAITING_USER', CASE WHEN 'WAITING_CONFIRM_LOBBY' THEN 'WAITING_LOBBY' END) OR status IS NULL);
 END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
-  UPDATE lobby_users SET status='CANCELLED_BY_CREATOR'
+  UPDATE lobby_users SET status=NULL
     WHERE id_user=_id_target AND id_lobby=_id_lobby AND created_by=_id_viewer AND status='WAITING_CONFIRM_LOBBY';
   RETURN FOUND;
 END
