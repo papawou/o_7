@@ -84,7 +84,7 @@ DECLARE
   __was_owner boolean;
   __new_owner integer;
 BEGIN
-  DELETE FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
+  UPDATE lobby_users SET fk_member=null, joined_at=null WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
   IF NOT FOUND THEN RETURN true; END IF;
   
   IF __was_owner IS TRUE THEN
@@ -247,7 +247,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
-  UPDATE lobby_users SET status='CANCELLED_BY_USER'
+  UPDATE lobby_users SET status='CANCELLED_BY_CREATOR'
     WHERE id_user=_id_target AND id_lobby=_id_lobby AND created_by=_id_viewer AND status='WAITING_CONFIRM_LOBBY';
   RETURN FOUND;
 END
