@@ -277,6 +277,8 @@ END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_ban_user(_id_viewer integer, _id_lobby integer, _id_target integer, _ban_resolved_at timestamptz) RETURNS boolean AS $$
+DECLARE
+  __was_member boolean;
 BEGIN
     PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
@@ -284,9 +286,10 @@ BEGIN
     INSERT INTO lobby_users(id_lobby, id_user, ban_resolved_at) VALUES(_id_lobby, _id_target, _ban_resolved_at)
         ON CONFLICT (id_lobby, id_user) DO UPDATE SET ban_resolved_at=_ban_resolved_at,
                                                       fk_member=NULL,
-                                                      status=NULL;
+                                                      status=NULL
+        RETURNING fk_member IS NOT NULL INTO __was_member;
 
-    IF FOUND THEN UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=_id_lobby; END IF;
+    IF FOUND AND __was_member THEN UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=_id_lobby; END IF;
 END
 $$ LANGUAGE plpgsql;
 

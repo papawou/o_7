@@ -51,22 +51,21 @@ CREATE TABLE lobby_users(
     PRIMARY KEY(id_user, id_lobby),
     --member
     fk_member integer REFERENCES users UNIQUE,
-    CHECK(id_user=fk_member),
     UNIQUE(id_lobby, fk_member),
-    is_owner boolean NOT NULL DEFAULT FALSE,
-    specific_perms integer NOT NULL DEFAULT 0,
-    cached_perms integer NOT NULL DEFAULT 0,
+    is_owner boolean,
+    specific_perms integer,
+    cached_perms integer,
     joined_at timestamptz,
+    CHECK((fk_member=id_user
+            AND is_owner IS NOT NULL
+            AND cached_perms IS NOT NULL
+            AND joined_at IS NOT NULL
+            AND ban_resolved_at < NOW()) OR fk_member IS NULL),
     --invitation/lobby_join_request
     status lobby_join_request_status,
     last_attempt timestamptz,
-    token integer,
+    created_by integer REFERENCES users,
     --ban
     ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
-
-CREATE TABLE lobby_invitations(
-  id_user integer REFERENCES users NOT NULL,
-  created_by integer REFERENCES users NOT NULL
-);
