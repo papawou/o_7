@@ -11,9 +11,9 @@ candidate
 lobby
   accept
   deny
-INVITE
+AS INVITE
 creator
-	create
+	create --if trust_invite update to WAITING_USER
 	cancel
 target
 	deny
@@ -33,9 +33,9 @@ BEGIN
   INSERT INTO lobby_slots(id_lobby, free_slots, max_slots) VALUES(id_lobby_, _max_slots-1, _max_slots);
 
   INSERT INTO lobby_users
-    (id_lobby, id_user, fk_member, is_owner, specific_perms, cached_perms)
+    (id_lobby, id_user, fk_member, is_owner, cached_perms)
     VALUES
-    (id_lobby_, _id_viewer, _id_viewer,  true, 1, 1);
+    (id_lobby_, _id_viewer, _id_viewer,  true, 1);
 END;
 $$ LANGUAGE plpgsql;
 
