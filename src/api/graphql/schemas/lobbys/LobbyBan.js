@@ -1,14 +1,11 @@
-import { FriendshipConnection } from "./Friendship"
-
 export const schema = `
-type User {
+type LobbyBan {
   id: ID!
-  name: String!
-  created_at: String!
 
-  friends: FriendshipConnection
-  followers: FollowersConnection
-  followings: FollowingConnection
+  banned: User!
+  banned_by: User!
+
+  ban_resolved_at: String
 }
 
 extend type Query {
@@ -24,8 +21,8 @@ export class User {
   }
   static __typename = 'User'
 
-  async friends(args, ctx) {
-    return await FriendshipConnection.gen(this.id, ctx)
+  async lobbyMember(args, ctx) {
+    return LobbyMember.genByUser(this.id, ctx)
   }
 
   static async gen(id, ctx) {
@@ -34,11 +31,9 @@ export class User {
   }
   static async load(ids, ctx) {
     let users = await ctx.db.any(`
-      SELECT row_to_json(users.*) as data
-        FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
-        LEFT JOIN users ON users.id=key_id
-        ORDER BY ordinality
-    `, [ids])
+    SELECT row_to_json(users.*) as data
+    FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id LEFT JOIN users ON users.id=key_id
+    ORDER BY ordinality`, [ids])
     return users.map(user => user.data)
   }
 }

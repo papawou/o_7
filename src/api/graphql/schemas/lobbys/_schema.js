@@ -5,7 +5,7 @@ import * as LobbyMember from './LobbyMember'
 
 export const schema = [
     Lobby.schema,
-    LobbyMember.schema
+    LobbyUser.schema
 ]
 
 export const resolvers = {}

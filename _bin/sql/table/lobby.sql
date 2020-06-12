@@ -76,7 +76,8 @@ ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFER
 join
 leave
 */
-CREATE TYPE lobby_notifications_type AS ENUM('JOIN', 'LEAVE');
+/*
+CREATE TYPE lobby_notifications_type AS ENUM('JOIN', 'LEAVE', 'INVITATION');
 
 CREATE TABLE lobby_notifications(
   id bigserial PRIMARY KEY,
@@ -94,3 +95,4 @@ CREATE TABLE lobby_notification_consumers(
   PRIMARY KEY(id_notification, id_user),
   seen boolean NOT NULL DEFAULT FALSE
 );
+*/

@@ -7,12 +7,22 @@ export const schema = `
 union LobbyPlatforms = GamePlatform | GameCross
 type Lobby {
   id: ID!
+
   owner: User!
-  created_at: String!
-  members: LobbyMembersConnection!
 
   game: Game
   platforms: LobbyPlatforms
+  
+"""
+  members: [LobbyMember]!
+
+  bans: [LobbyBan]!
+
+  request: LobbyRequest
+
+  user(id_user: ID!): LobbyUser!
+"""
+  created_at: String!
 }
 
 extend type Query {
@@ -54,6 +64,9 @@ export class Lobby {
     return this._id_cross ?
       await GameCross.gen(this._id_game, this._id_cross, ctx)
       : await GamePlatform.gen(this._id_game, this._id_platform, ctx)
+  }
+  async users(args, ctx) {
+    return await LobbyUser.gen(this._id_lobby, this._id_user, ctx)
   }
 
   static async gen(id, ctx) {

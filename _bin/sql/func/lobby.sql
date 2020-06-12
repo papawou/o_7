@@ -7,16 +7,14 @@ leave
 candidate
   create
   confirm
-  cancel
+	deny --as cancel
 lobby
   accept
   deny
-AS INVITE
+//invite
 creator
 	create --if trust_invite update to WAITING_USER
 	cancel
-target
-	deny
 
 ban
 set_specific_perms
@@ -83,7 +81,7 @@ DECLARE
   __was_owner boolean;
   __new_owner integer;
 BEGIN
-  DELETE FROM lobby_users WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
+  UPDATE lobby_users SET fk_member=NULL WHERE id_lobby=_id_lobby AND fk_member=_id_viewer RETURNING is_owner INTO __was_owner;
   IF NOT FOUND THEN RETURN true; END IF;
   
   IF __was_owner IS TRUE THEN
@@ -104,7 +102,7 @@ $$ LANGUAGE plpgsql;
 
 --JOIN_REQUEST
 --user
-CREATE OR REPLACE FUNCTION lobby_join_request_create(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
+CREATE OR REPLACE FUNCTION lobby_request_create(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
 DECLARE
   __lobby_params lobbys%rowtype;
 BEGIN
@@ -141,7 +139,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_join_request_accept(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_request_accept(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 DECLARE
   __lobby_params lobbys%rowtype;
   __viewer_perms integer;
@@ -177,7 +175,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_join_request_cancel(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_request_cancel(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   UPDATE lobby_users SET status='DENIED_BY_USER',
                          last_attempt=NOW()
@@ -189,7 +187,7 @@ END
 $$ LANGUAGE plpgsql;
 
 --lobby
-CREATE OR REPLACE FUNCTION lobby_join_request_accept(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_manage_request_accept(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
@@ -201,7 +199,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_join_request_deny(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_manage_request_deny(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
