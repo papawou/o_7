@@ -6,15 +6,18 @@ type User {
   name: String!
   created_at: String!
 
-  friends: FriendshipConnection
-  followers: FollowersConnection
-  followings: FollowingConnection
+  friends: FriendshipConnection!
 }
 
 extend type Query {
   user(id: ID!): User
 }
 `
+export const resolvers = {
+  Query: {
+    user: (obj, { id }, ctx, info) => User.gen(ctx, id)
+  }
+}
 
 export class User {
   constructor(user) {
@@ -24,15 +27,19 @@ export class User {
   }
   static __typename = 'User'
 
+  //fields
   async friends(args, ctx) {
-    return await FriendshipConnection.gen(this.id, ctx)
+    return await FriendshipConnection.gen(ctx, this.id)
   }
 
-  static async gen(id, ctx) {
+  //fetch
+  static async gen(ctx, id) {
     let user = await ctx.dl.user.load(parseInt(id))
     return user ? new User(user) : null
   }
-  static async load(ids, ctx) {
+
+  //dataloader
+  static async load(ctx, ids) {
     let users = await ctx.db.any(`
       SELECT row_to_json(users.*) as data
         FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
@@ -41,10 +48,8 @@ export class User {
     `, [ids])
     return users.map(user => user.data)
   }
-}
 
-export const resolvers = {
-  Query: {
-    user: (obj, { id }, ctx, info) => User.gen(id, ctx)
+  static prime(ctx, user) {
+    ctx.dl.user.prime(user.id, user)
   }
 }

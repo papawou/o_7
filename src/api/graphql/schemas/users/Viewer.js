@@ -19,7 +19,7 @@ export class Viewer {
     this.id = id
   }
 
-  static async gen(id) {
+  static gen(id) {
     return new Viewer(id)
   }
 }

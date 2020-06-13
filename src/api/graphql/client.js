@@ -1,6 +1,6 @@
 import graphqlHTTP from 'express-graphql'
 import { makeExecutableSchema as buildSchema } from 'graphql-tools'
-import * as root_schema from './schemas/schema'
+import * as root_schema from './schemas/_schema'
 
 import { Context } from './context'
 
@@ -12,7 +12,7 @@ const schema = buildSchema({
 const graphHTTP = graphqlHTTP(
     async (request, response, graphQLParams) => ({
         schema: schema,
-        context: await Context.gen(request, response),
+        context: Context.gen(request, response),
         graphiql: true
     })
 )
