@@ -1,4 +1,5 @@
 import { User } from "./User"
+import { utils } from "pg-promise"
 
 export const schema = `
 interface FriendshipInterface {
@@ -61,16 +62,17 @@ export class Friendship {
 
   //fetch
   static async gen(ctx, id_usera, id_userb) {
-    let friendship = await ctx.dl.friendship.load({ id_usera: Math.min(id_usera, id_userb), id_userb: Math.max(id_usera, id_userb) })
+    let friendship = await ctx.dl.friendship.load(JSON.stringify({ id_usera: Math.min(id_usera, id_userb), id_userb: Math.max(id_usera, id_userb) }))
     return friendship ? new this(friendship) : null
   }
 
   //dataloader
   static async load(ctx, ids) {
-    console.log(ids)
+    "FR_xxxxxxxx"
     let ids_usera = []
     let ids_userb = []
     for (let unique_id of ids) {
+      unique_id = JSON.parse(unique_id)
       ids_usera.push(unique_id.id_usera)
       ids_userb.push(unique_id.id_userb)
     }
@@ -87,6 +89,13 @@ export class Friendship {
 
   static prime(ctx, friendship) {
     ctx.dl.friendship.prime({ id_usera: friendship.id_usera, id_userb: friendship.id_userb }, friendship)
+  }
+
+  static btoa(id_userA, id_userB) {
+    return Buffer.from(`${this.__typename}_${id_userA}:${id_userB}`, 'base64').replace(/+/g, '-').replace(/=/g, '').replace(/\//g, '_')
+  }
+  static atob(base) {
+    return Buffer.from(base.replace(/-/g, '+').replace(/_/g, '/'), 'utf8')
   }
 }
 

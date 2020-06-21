@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS users, friendships, user_friends_request, user_followers, user_bans CASCADE;
+DROP TABLE IF EXISTS users, friendships, user_friends_request, follows, user_bans CASCADE;
 DROP TYPE IF EXISTS user_friends_request_status CASCADE;
 CREATE TABLE users(
   id bigserial PRIMARY KEY,
@@ -16,7 +16,7 @@ CREATE TABLE friendships(
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE user_followers(
+CREATE TABLE follows(
   id_follower integer REFERENCES users NOT NULL,
   id_following integer REFERENCES users NOT NULL,
   PRIMARY KEY(id_follower, id_following),

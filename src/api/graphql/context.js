@@ -3,6 +3,7 @@ import sql from '../postgresql/sql/root'
 import initLoaders from '../dataloader/root'
 import { Viewer } from './schemas/users/Viewer'
 import Loaders from '../dataloader/root'
+import { redis } from '../redis/client'
 
 export class Context {
     constructor(request, response, viewer) {
@@ -11,8 +12,9 @@ export class Context {
         this.viewer = viewer
         this.db = db
         this.sql = sql
-        //this.dl = initLoaders(this)
-        this.dl = new Loaders(this)
+        this.dl = initLoaders(this)
+        //this.dl = new Loaders(this)
+        this.redis = redis
     }
 
     static gen(req, res) {

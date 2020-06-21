@@ -13,4 +13,12 @@ VALUES
     (1,2),
     (1,3),
     (1,4),
-    (2,4)
+    (2,4);
+
+INSERT INTO follows
+    (id_follower, id_following)
+VALUES
+    (1,2),
+    (1,3),
+    (1,4),
+    (2,4);

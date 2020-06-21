@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS games, platforms, game_platforms CASCADE;
+
 CREATE TABLE games(
     id serial PRIMARY KEY,
     name varchar(25)
