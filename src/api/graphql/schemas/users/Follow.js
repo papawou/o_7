@@ -96,7 +96,7 @@ export class Follow {
         cached_nodes[i] = JSON.parse(cached_nodes[i])
     }
 
-    if (pg_ids.ids_follower > 0) {
+    if (pg_ids.ids_follower.length > 0) {
       let pg_nodes = await ctx.db.any(`
         SELECT row_to_json(follows.*) as data
           FROM unnest(ARRAY[$1:csv]::integer[], ARRAY[$2:csv]::integer[]) WITH ORDINALITY key_id(id_follower, id_following)
@@ -158,7 +158,7 @@ export class FollowerConnection {
 
   //fetch
   static async gen(ctx, id_following) {
-    let ids_follower = await ctx.dl.followers.load(id_following)
+    let ids_follower = await ctx.dl.followers.load('' + id_following)
     return ids_follower ? new FollowerConnection(id_following, ids_follower) : null
   }
 
@@ -236,7 +236,7 @@ export class FollowingConnection {
 
   //fetch
   static async gen(ctx, id_follower) {
-    let ids_following = await ctx.dl.followings.load(id_follower)
+    let ids_following = await ctx.dl.followings.load('' + id_follower)
     return ids_following ? new FollowingConnection(id_follower, ids_following) : null
   }
 
@@ -265,13 +265,14 @@ export class FollowingConnection {
       for (let i = 0; i < cached_nodes.length; i++) {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data.length > 0) {
-            pg_map.set(ids[i], JSON.stringify(pg_nodes[0].data))
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
             cached_nodes[i] = pg_nodes.shift().data
           }
           else
             pg_nodes.shift()
         }
       }
+      console.log(pg_map)
       if (pg_map.size > 0)
         await ctx.redis.mset(pg_map)
     }
