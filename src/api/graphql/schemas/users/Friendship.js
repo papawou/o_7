@@ -31,13 +31,15 @@ type FriendshipConnection {
 }
 
 extend type Query {
-  friendship(id_userA: ID!, id_userB: ID!): Friendship
+  friendship_byUnique(id_userA: ID!, id_userB: ID!): Friendship
+  friendship(id: ID!): Friendship
 }
 `
 
 export const resolvers = {
   Query: {
-    friendship: (obj, { id_userA, id_userB }, ctx, info) => Friendship.genByUnique(ctx, id_userA, id_userB),
+    friendship_byUnique: (obj, { id_userA, id_userB }, ctx, info) => Friendship.genByUnique(ctx, User.decode(id_userA), User.decode(id_userB)),
+    friendship: (obj, { id }, ctx, info) => Friendship.gen(ctx, id)
   },
   FriendshipInterface: {
     __resolveType: (obj, args, ctx, info) => obj ? obj.__typename : null
@@ -46,36 +48,30 @@ export const resolvers = {
 
 export class Friendship {
   constructor(friendship) {
-    this._cid_usera = User.encode(friendship.id_usera)
-    this._cid_userb = User.encode(friendship.id_userb)
+    this._id_usera = friendship.id_usera
+    this._id_userb = friendship.id_userb
     this.id = Friendship.encode(friendship.id_usera, friendship.id_userb)
   }
   static __typename = 'Friendship'
 
   //fields
   async userA(args, ctx) {
-    return await User.gen(ctx, this._cid_usera)
+    return await User.gen(ctx, this._id_usera)
   }
 
   async userB(args, ctx) {
-    return await User.gen(ctx, this._cid_userb)
+    return await User.gen(ctx, this._id_userb)
   }
 
   //fetch
-  static async gen(ctx, cid) {
-    let friendship = await ctx.dl.friendship.load(cid)
+  static async gen(ctx, id) {
+    let friendship = await ctx.dl.friendship.load(id)
     return friendship ? new this(friendship) : null
   }
-  static async genByUnique(ctx, cid_userA, cid_userB) {
-    return await Friendship.gen(ctx, Friendship.encode(User.decode(cid_userA), User.decode(cid_userB)))
+  static async genByUnique(ctx, id_userA, id_userB) {
+    return await this.gen(ctx, Friendship.encode(id_userA, id_userB))
   }
-  //utils
-  static encode(id_userA, id_userB) {
-    return Friendship.__typename + '_' + id_userA < id_userB ? id_userA + '-' + id_userB : id_userB + '-' + id_userA
-  }
-  static decode(cid) {
-    return cid.slice(Friendship.__typename.length + 1).split('-')
-  }
+
   //dataloader
   static async load(ctx, ids) {
     let cached_nodes = await ctx.redis.mget(ids)
@@ -101,34 +97,47 @@ export class Friendship {
 
       let pg_map = new Map()
       for (let i = 0; i < cached_nodes.length; i++) {
-        if (cached_nodes[i] == null && pg_nodes[0].data !== null) {
-          pg_map.set(ids[i], pg_nodes[0].data)
-          cached_nodes[i] = pg_nodes.shift().data
+        if (cached_nodes[i] == null) {
+          if (pg_nodes[0].data !== null) {
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
+            cached_nodes[i] = pg_nodes.shift().data
+          }
+          else
+            pg_nodes.shift()
         }
       }
-      await ctx.redis.mset(pg_map)
+      if (pg_map.size > 0)
+        await ctx.redis.mset(pg_map)
     }
 
     return cached_nodes
+  }
+
+  //utils
+  static encode(id_userA, id_userB) {
+    return Friendship.__typename + '_' + id_userA < id_userB ? id_userA + '-' + id_userB : id_userB + '-' + id_userA
+  }
+  static decode(cid) {
+    return cid.slice(Friendship.__typename.length + 1).split('-')
   }
 }
 
 class FriendshipEdge extends Friendship {
   constructor(friendship) {
     super(friendship)
-    this._cid_node = null
+    this._id_node = null
   }
   static __typename = 'FriendshipEdge'
 
   //fields
   async node(args, ctx) {
-    return User.gen(ctx, this._cid_node)
+    return User.gen(ctx, this._id_node)
   }
 
   //fetch
-  static async gen(ctx, viewed_as, cid_friend) {
-    let friendshipedge = await super.genByUnique(ctx, viewed_as, cid_friend)
-    friendshipedge._cid_node = viewed_as == friendshipedge._cid_usera ? friendshipedge._cid_userb : friendshipedge._cid_usera
+  static async gen(ctx, viewed_as, id_friend) {
+    let friendshipedge = await super.genByUnique(ctx, viewed_as, id_friend)
+    friendshipedge._id_node = viewed_as == friendshipedge._id_usera ? friendshipedge._id_userb : friendshipedge._id_usera
     return friendshipedge
   }
 }
@@ -143,24 +152,59 @@ export class FriendshipConnection {
 
   //fields
   async edges(args, ctx) {
-    return await Promise.all(this._ids_friend.map(async id_friend => await FriendshipEdge.gen(ctx, this._viewed_as, User.encode(id_friend))))
+    return await Promise.all(this._ids_friend.map(async id_friend => await FriendshipEdge.gen(ctx, this._viewed_as, id_friend)))
   }
 
   //fetch
-  static async gen(ctx, cid_user) {
-    let ids_friend = await ctx.dl.friendships.load(cid_user)
-    return new FriendshipConnection(cid_user, ids_friend)
+  static async gen(ctx, id_user) {
+    let ids_friend = await ctx.dl.friendships.load(id_user)
+    return new FriendshipConnection(id_user, ids_friend)
   }
 
   //dataloader
   static async load(ctx, ids) {
-    let friendships = await ctx.db.any(`
-      SELECT array_remove(array_agg(CASE WHEN friendships.id_usera = key_id THEN id_userb ELSE id_usera END), null) as data
-        FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
-        LEFT JOIN friendships ON friendships.id_usera=key_id OR friendships.id_userb=key_id
-        GROUP BY ordinality ORDER BY ordinality;
-    `, [ids])
+    let cids = ids.map(id => FriendshipConnection.encode(id))
+    let cached_nodes = await ctx.redis.mget(cids)
+    let pg_ids = []
 
-    return friendships.map(({ data }) => data)
+    for (let i = 0; i < cached_nodes.length; i++) {
+      if (cached_nodes[i] == null)
+        pg_ids.push(ids[i])
+      else
+        cached_nodes[i] = JSON.parse(cached_nodes[i])
+    }
+    if (pg_ids.length > 0) {
+      let pg_nodes = await ctx.db.any(`
+        SELECT array_remove(array_agg(CASE WHEN friendships.id_usera = key_id THEN id_userb ELSE id_usera END), null) as data
+          FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
+          LEFT JOIN friendships ON friendships.id_usera=key_id OR friendships.id_userb=key_id
+          GROUP BY ordinality ORDER BY ordinality;
+        `, [pg_ids])
+
+      let pg_map = new Map()
+      for (let i = 0; i < cached_nodes.length; i++) {
+        if (cached_nodes[i] == null) {
+          if (pg_nodes[0].data.length > 0) {
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
+            cached_nodes[i] = pg_nodes.shift().data
+          }
+          else
+            pg_nodes.shift()
+        }
+      }
+      if (pg_map.size > 0)
+        await ctx.redis.mset(pg_map)
+    }
+
+    return cached_nodes
+  }
+
+  //utils
+  static encode(id_user) {
+    return FriendshipConnection.__typename + '_' + id_user
+  }
+
+  static decode(cid) {
+    return cid.slice(FriendshipConnection.__typename.length + 1)
   }
 }
