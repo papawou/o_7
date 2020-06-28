@@ -187,10 +187,8 @@ export class FollowerConnection {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data.length > 0) {
             pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
-            cached_nodes[i] = pg_nodes.shift().data
           }
-          else
-            pg_nodes.shift()
+          cached_nodes[i] = pg_nodes.shift().data
         }
       }
       if (pg_map.size > 0)
@@ -266,13 +264,11 @@ export class FollowingConnection {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data.length > 0) {
             pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
-            cached_nodes[i] = pg_nodes.shift().data
           }
-          else
-            pg_nodes.shift()
+          cached_nodes[i] = pg_nodes.shift().data
         }
       }
-      console.log(pg_map)
+
       if (pg_map.size > 0)
         await ctx.redis.mset(pg_map)
     }

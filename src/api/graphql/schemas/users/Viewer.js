@@ -1,6 +1,17 @@
+import { User } from "./User"
+
 export const schema = `
-type Viewer {
+type Viewer implements UserInterface {
   id: ID!
+  name: String!
+  created_at: String!
+
+  friends: FriendshipConnection!
+
+  followers: FollowerConnection!
+  followings: FollowingConnection!
+
+  friendshiprequests: FriendshipRequestConnection
 }
 
 extend type Query {
@@ -14,12 +25,5 @@ export const resolvers = {
   }
 }
 
-export class Viewer {
-  constructor(id) {
-    this.id = id
-  }
-
-  static gen(id) {
-    return new Viewer(id)
-  }
+export class Viewer extends User {
 }

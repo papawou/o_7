@@ -97,10 +97,8 @@ export class Friendship {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data !== null) {
             pg_map.set(ids[i], JSON.stringify(pg_nodes[0].data))
-            cached_nodes[i] = pg_nodes.shift().data
           }
-          else
-            pg_nodes.shift()
+          cached_nodes[i] = pg_nodes.shift().data
         }
       }
       if (pg_map.size > 0)

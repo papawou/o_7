@@ -1,27 +1,14 @@
-import { FriendshipConnection, Friendship } from "./Friendship"
-import { FollowerConnection, FollowingConnection } from "./Follow"
-
 export const schema = `
-interface UserInterface{
-  id: ID!
-  name: String!
-  created_at: String!
-
-  friends: FriendshipConnection!
-
-  followers: FollowerConnection!
-  followings: FollowingConnection! 
+enum frienshiprequest_status {
+  WAITING_TARGET
+  DECLINED
 }
-
-type User implements UserInterface {
+type FriendshipRequest {
   id: ID!
-  name: String!
-  created_at: String!
+  creator: User!
+  target: User!
 
-  friends: FriendshipConnection!
-
-  followers: FollowerConnection!
-  followings: FollowingConnection!
+  status
 }
 
 extend type Query {

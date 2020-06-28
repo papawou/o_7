@@ -7,6 +7,8 @@ CREATE TABLE users(
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
+--table user_user: a_following, b_following, both_following, friends, pending_request_friend, block
+
 CREATE TABLE friendships(
   id_userA integer REFERENCES users NOT NULL,
   id_userB integer REFERENCES users NOT NULL,
