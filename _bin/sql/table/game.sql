@@ -15,5 +15,5 @@ CREATE TABLE game_platforms(
     id_platform integer REFERENCES platforms NOT NULL,
     id_cross integer DEFAULT NULL,
     PRIMARY KEY (id_game, id_platform),
-    UNIQUE(id_game, id_platform, id_cross)
+    UNIQUE(id_game, id_cross, id_platform)
 );

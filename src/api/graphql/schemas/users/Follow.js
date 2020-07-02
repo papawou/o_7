@@ -82,13 +82,13 @@ export class Follow {
   }
 
   //dataloader
-  static async load(ctx, ids) {
-    let cached_nodes = await ctx.redis.mget(ids)
+  static async load(ctx, cids) {
+    let cached_nodes = await ctx.redis.mget(cids)
     let pg_ids = { ids_follower: [], ids_following: [] }
 
     for (let i = 0; i < cached_nodes.length; i++) {
       if (cached_nodes[i] == null) {
-        let unique_id = Follow.decode(ids[i])
+        let unique_id = Follow.decode(cids[i])
         pg_ids.ids_follower.push(unique_id[0])
         pg_ids.ids_following.push(unique_id[1])
       }
@@ -108,7 +108,7 @@ export class Follow {
       for (let i = 0; i < cached_nodes.length; i++) {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data !== null) {
-            pg_map.set(ids[i], JSON.stringify(pg_nodes[0].data))
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
             cached_nodes[i] = pg_nodes.shift().data
           }
           else

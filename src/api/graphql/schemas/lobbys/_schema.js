@@ -1,19 +1,13 @@
 import * as _ from 'lodash'
 
-import * as User from './User'
-import * as Viewer from './Viewer'
-import * as Friendship from './Friendship'
-import * as Follow from './Follow'
+import * as Lobby from './Lobby'
+import * as LobbyMember from './LobbyMember'
 
 export const schema = [
-    User.schema,
-    Viewer.schema,
-    Friendship.schema,
-    Follow.schema
+    Lobby.schema,
+    LobbyMember.schema
 ]
 
 export const resolvers = {}
-_.merge(resolvers, User.resolvers)
-_.merge(resolvers, Viewer.resolvers)
-_.merge(resolvers, Friendship.resolvers)
-_.merge(resolvers, Follow.resolvers)
+_.merge(resolvers, Lobby.resolvers)
+_.merge(resolvers, LobbyMember.resolvers)

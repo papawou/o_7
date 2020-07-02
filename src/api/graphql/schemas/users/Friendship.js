@@ -64,19 +64,19 @@ export class Friendship {
   }
 
   //fetch
-  static async gen(ctx, id) {
-    let friendship = await ctx.dl.friendship.load(id)
+  static async gen(ctx, cid) {
+    let friendship = await ctx.dl.friendship.load(cid)
     return friendship ? new this(friendship) : null
   }
 
   //dataloader
-  static async load(ctx, ids) {
-    let cached_nodes = await ctx.redis.mget(ids)
+  static async load(ctx, cids) {
+    let cached_nodes = await ctx.redis.mget(cids)
     let pg_ids = { ids_userA: [], ids_userB: [] }
 
     for (let i = 0; i < cached_nodes.length; i++) {
       if (cached_nodes[i] == null) {
-        let unique_id = Friendship.decode(ids[i])
+        let unique_id = Friendship.decode(cids[i])
         pg_ids.ids_userA.push(unique_id[0])
         pg_ids.ids_userB.push(unique_id[1])
       }
@@ -96,7 +96,7 @@ export class Friendship {
       for (let i = 0; i < cached_nodes.length; i++) {
         if (cached_nodes[i] == null) {
           if (pg_nodes[0].data !== null) {
-            pg_map.set(ids[i], JSON.stringify(pg_nodes[0].data))
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
           }
           cached_nodes[i] = pg_nodes.shift().data
         }

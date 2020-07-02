@@ -1,10 +1,17 @@
+import { LobbyRequest } from "./LobbyRequest"
+import { LobbyMember, LobbyMemberConnection } from "./LobbyMember"
+import { LobbyBan } from "./LobbyBan"
+
 export const schema = `
 type Lobby {
   id: ID!
   name: String!
   created_at: String!
 
-  members: LobbyMembersConnection!
+  members: LobbyMemberConnection!
+
+  bans: [LobbyBan]!
+  requests: [LobbyRequest]!
 }
 
 extend type Query {
@@ -14,9 +21,6 @@ extend type Query {
 export const resolvers = {
   Query: {
     lobby: async (obj, { id }, ctx, info) => {
-      if (Lobby.decode(id) == '') {
-        return null
-      }
       return await Lobby.gen(ctx, Lobby.decode(id))
     }
   }
@@ -34,24 +38,32 @@ export class Lobby {
 
   //fields
   async members(args, ctx) {
-    return await FriendshipConnection.gen(ctx, this._id)
+    return await LobbyMemberConnection.gen(ctx, this._id)
+  }
+
+  async requests(args, ctx) {
+    let ids_user = await ctx.db.any("SELECT id_user FROM lobby_users WHERE id_lobby=$1 AND status IS NOT NULL", [this._id_lobby])
+    return await Promise.all(ids_user.map(id_user => LobbyRequest.gen(ctx, id_user)))
+  }
+  async bans(args, ctx) {
+    let ids_user = await ctx.db.any("SELECT id_user FROM lobby_users WHERE id_lobby=$1 AND ban_resolved_at > NOW()", [this._id_lobby])
+    return await Promise.all(ids_user.map(id_user => LobbyBan.gen(ctx, id_user)))
   }
 
   //fetch
   static async gen(ctx, id) {
-    let lobby = await ctx.dl.lobby.load('' + id)
+    let lobby = await ctx.dl.lobby.load(Lobby.encode(id))
     return lobby ? new Lobby(lobby) : null
   }
 
   //dataloader
-  static async load(ctx, ids) {
-    let cids = ids.map(id => Lobby.encode(id))
+  static async load(ctx, cids) {
     let cached_nodes = await ctx.redis.mget(cids)
     let pg_ids = []
 
     for (let i = 0; i < cached_nodes.length; i++) {
       if (cached_nodes[i] == null)
-        pg_ids.push(ids[i])
+        pg_ids.push(Lobby.decode(cids[i]))
       else
         cached_nodes[i] = JSON.parse(cached_nodes[i])
     }

@@ -1,5 +1,7 @@
 import { FriendshipConnection, Friendship } from "./Friendship"
 import { FollowerConnection, FollowingConnection } from "./Follow"
+import { LobbyMember } from "../lobbys/LobbyMember"
+import { Lobby } from "../lobbys/Lobby"
 
 export const schema = `
 interface UserInterface{
@@ -22,6 +24,8 @@ type User implements UserInterface {
 
   followers: FollowerConnection!
   followings: FollowingConnection!
+
+  currentLobby: Lobby
 }
 
 extend type Query {
@@ -63,6 +67,14 @@ export class User {
 
   async followings(args, ctx) {
     return await FollowingConnection.gen(ctx, this._id)
+  }
+
+  async currentLobby(args, ctx) {
+    let id_lobby = ctx.db.one('SELECT id_lobby FROM lobby_users WHERE fk_member=$1', [this._id])
+    if (id_lobby == null) {
+      return null
+    }
+    return await Lobby.gen(ctx, id_lobby)
   }
 
   //fetch
