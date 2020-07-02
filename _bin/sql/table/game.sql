@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS games, platforms, game_platforms CASCADE;
+DROP TABLE IF EXISTS games, platforms, game_platform CASCADE;
 
 CREATE TABLE games(
     id serial PRIMARY KEY,
@@ -10,7 +10,7 @@ CREATE TABLE platforms(
     name varchar(50)
 );
 
-CREATE TABLE game_platforms(
+CREATE TABLE game_platform(
     id_game integer REFERENCES games NOT NULL,
     id_platform integer REFERENCES platforms NOT NULL,
     id_cross integer DEFAULT NULL,

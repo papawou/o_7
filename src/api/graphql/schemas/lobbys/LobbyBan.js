@@ -1,6 +1,6 @@
 import { User } from "../users/User"
 import { Lobby } from "./Lobby"
-import * as LobbyUserInterface from "./LobbyUser"
+import { LobbyUserInterface } from "./LobbyUser"
 
 export const schema = `
 type LobbyBan {
@@ -12,10 +12,9 @@ type LobbyBan {
 }
 `
 
-export class LobbyBan {
+export class LobbyBan extends LobbyUserInterface {
 	constructor(lobbyban) {
-		this._id_lobby = lobbyban.id_lobby
-		this._id_user = lobbyban.fk_ban
+		super(lobbyban)
 		this.ban_resolved_at = lobbyban.resolved_at
 
 		this.id = LobbyBan.encode(lobbyban.id_lobby, lobbyban.id_user)
@@ -32,7 +31,7 @@ export class LobbyBan {
 
 	//fetch
 	static async gen(ctx, id_lobby, id_user) {
-		let lobbyban = await LobbyUserInterface.gen(ctx, id_lobby, id_user)
+		let lobbyban = await super.gen(ctx, id_lobby, id_user)
 		return lobbyban.ban_resolved_at ? new LobbyBan(lobbyban) : null
 	}
 

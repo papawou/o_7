@@ -1,6 +1,6 @@
 import { User } from "../users/User"
 import { Lobby } from "./Lobby"
-import * as LobbyUserInterface from './LobbyUser'
+import { LobbyUserInterface } from './LobbyUser'
 
 export const schema = `
 enum LobbyRequestStatus {
@@ -31,10 +31,10 @@ type LobbyRequest implements LobbyRequestInterface {
 export const resolvers = {
 }
 
-export class LobbyRequest {
+export class LobbyRequest extends LobbyUserInterface {
 	constructor(lobbyrequest) {
-		this._id_lobby = lobbyrequest.id_lobby
-		this._id_user = lobbyrequest.id_user
+		super(lobbyrequest)
+		this.status = lobbyrequest.status
 
 		this.id = LobbyRequest.encode(lobbyrequest.id_lobby, lobbyrequest.id_user)
 	}
@@ -50,7 +50,7 @@ export class LobbyRequest {
 
 	//fetch
 	static async gen(ctx, id_lobby, id_user) {
-		let lobbyrequest = await LobbyUserInterface.gen(ctx, id_lobby, id_user)
+		let lobbyrequest = await super.gen(ctx, id_lobby, id_user)
 		return lobbyrequest.status ? new LobbyRequest(lobbyrequest) : null
 	}
 
