@@ -19,17 +19,13 @@ extend type Mutation {
   lobby_create(input: LobbyInput_create!): ID!
 
   lobby_join(id_lobby: ID!): Boolean
-
   lobby_leave(id_lobby: ID): Boolean
- 
+
   lobby_request_create(id_lobby: ID!): Boolean
-
   lobby_request_confirm(id_lobby: ID!): Boolean
-
   lobby_request_deny(id_lobby: ID!): Boolean
 
   lobby_request_manage_accept(id_user: ID!, id_lobby: ID!): Boolean
-
   lobby_request_manage_deny(id_user: ID!, id_lobby: ID!): Boolean
 
   lobby_kick(id_user: ID!, id_lobby: ID!, timestamp: String): Boolean

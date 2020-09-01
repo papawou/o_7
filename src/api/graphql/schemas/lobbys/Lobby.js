@@ -9,9 +9,12 @@ type Lobby {
   created_at: String!
 
   members: LobbyMemberConnection!
-
   bans: [LobbyBan]!
   requests: [LobbyRequest]!
+
+  
+  --lobbyusers(filter: ban|member|request): [LobbyUser]!
+  lobby_user(id_user: ID!): LobbyUser!
 }
 
 extend type Query {

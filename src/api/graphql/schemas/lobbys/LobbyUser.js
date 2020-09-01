@@ -1,8 +1,23 @@
+import { LobbyMember } from "./LobbyMember"
+import { LobbyRequest } from "./LobbyRequest"
+
 export const schema = `
 interface LobbyUserInterface {
 	id: ID!
 	user: User!
 	lobby: Lobby!
+}
+
+type LobbyUser implements LobbyUserInterface {
+	id: ID!
+	user: User!
+	lobby: Lobby!
+
+	status: LobbyBan|LobbyMember|LobbyRequest
+
+	log_member:[LobbyMember]!
+	log_requests: [LobbyRequest]!	
+	log_bans: [LobbyBan]!
 }
 
 type LobbyBan implements LobbyUserInterface {
@@ -97,5 +112,27 @@ export class LobbyUserInterface {
 		}
 
 		return cached_nodes
+	}
+}
+
+export class LobbyUser extends LobbyUserInterface {
+	constructor(lobbyuser) {
+		super(lobbyuser)
+	}
+	static __typename = "LobbyUser"
+
+	static gen(ctx, id_lobby, id_user) {
+		return new LobbyUser({ id_lobby: id_lobby, id_user: id_user })
+	}
+	async active_status(args, ctx) {
+		let lobbyuser = await LobbyUserInterface.gen(ctx, this._id_lobby, this._id_user)
+		return lobbyuser.fk_member !== null ? new LobbyMember(lobbyuser) :
+			lobbyuser.status !== null ? new LobbyRequest(lobbyuser) :
+				lobbyuser.ban_resolved_at !== null ? new LobbyBan(lobbyuser) : null
+	}
+
+	async log_requests(args, ctx) {
+	}
+	async log_bans(args, ctx) {
 	}
 }

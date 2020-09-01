@@ -51,7 +51,6 @@ CREATE TABLE lobby_users(
     PRIMARY KEY(id_user, id_lobby),
     --member
     fk_member integer REFERENCES users UNIQUE,
-    UNIQUE(id_lobby, fk_member),
     is_owner boolean,
     cached_perms integer,
     joined_at timestamptz,
@@ -60,46 +59,42 @@ CREATE TABLE lobby_users(
                   AND is_owner IS NOT NULL
                   AND cached_perms IS NOT NULL
                   AND joined_at IS NOT NULL
-                  AND ban_resolved_at < NOW())
+                  AND ban_resolved_at < NOW()
+                  AND status IS NULL)
     ),
     --invitation/lobby_join_request
     status lobby_join_request_status,
-    last_attempt timestamptz,
-    created_by integer REFERENCES users,
+    updated_at timestamptz,
     --ban
     ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
-
+/*
 CREATE TABLE lobby_members(
     id_user integer REFERENCES users NOT NULL UNIQUE,
-    id_lobby integer REFERENCES lobbys NOT NULL
-);
-
-CREATE TABLE log_lobby_bans(
-    id_user integer REFERENCES users NOT NULL,
     id_lobby integer REFERENCES lobbys NOT NULL,
-    ban_resolved_at timestamptz NOT NULL,
-    created_by integer REFERENCES users NOT NULL
+    PRIMARY KEY(id_lobby, id_user),
+    joined_at timestamptz NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE log_lobby_requests(
-    id_user integer REFERENCES users NOT NULL,
-    id_lobby integer REFERENCES lobbys NOT NULL,
-    status lobby_join_request_status,
-    resolved_by integer REFERENCES
+  id_user integer REFERENCES users NOT NULL,
+  id_lobby integer REFERENCES lobbys NOT NULL,
+  status lobby_join_request_status NOT NULL,
+  done_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL,
+  history json
 );
 
-CREATE TABLE lobby_invitations(
+CREATE TABLE log_lobby_ban(
     id_user integer REFERENCES users NOT NULL,
     id_lobby integer REFERENCES lobbys NOT NULL,
+    ban_resolved_at timestamptz,
+    created_at timestamptz,
     created_by integer REFERENCES users NOT NULL,
 
-    need_confirm boolean NOT NULL DEFAULT FALSE,
-    id_request integer REFERENCES lobby_requests
-    CHECK(id_user=id_request OR id_request IS NULL)
 );
-
+*/
 /*
 join
 leave

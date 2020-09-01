@@ -4,11 +4,11 @@ join
 leave
 
 --JOIN_REQUEST
-candidate
+creator
   create
   confirm
-	deny --as cancel
-lobby
+  deny --cancel
+manager
   accept
   deny
 //invite

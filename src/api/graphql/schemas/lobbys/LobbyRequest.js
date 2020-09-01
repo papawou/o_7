@@ -11,15 +11,7 @@ enum LobbyRequestStatus {
 	DENIED_BY_USER
 }
 
-interface LobbyRequestInterface {
-  id: ID!
-  user: User!
-	lobby: Lobby!
-	
-	status: LobbyRequestStatus!
-}
-
-type LobbyRequest implements LobbyRequestInterface {
+type LobbyRequest implements LobbyUserInterface {
   id: ID!
   user: User!
 	lobby: Lobby!
