@@ -1,6 +1,7 @@
 import initpgp from 'pg-promise'
+import monitor from 'pg-monitor'
 
-const initOptions = {
+const initOptions = {/*
     connect(client, dc, useCount) {
         //console.log('POSTGRES_CONNECT: ' + useCount)
     },
@@ -12,8 +13,10 @@ const initOptions = {
     },
     error(err, e) {
         console.log('POSTGRES_ERROR:\n' + err)
-    }
-};
+    }*/
+}
+
+monitor.attach(initOptions)
 
 const pgp = initpgp(initOptions)
 
