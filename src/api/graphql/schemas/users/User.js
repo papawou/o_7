@@ -24,8 +24,6 @@ type User implements UserInterface {
 
   followers: FollowerConnection!
   followings: FollowingConnection!
-
-  lobby_user(id: ID!): LobbyUser
 }
 
 extend type Query {
