@@ -34,17 +34,11 @@ CREATE TABLE lobby_slots(
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
 /*
-WAITING_USER --to member OR DENIED_BY_USER
 WAITING_LOBBY --to WAITING_USER OR DENIED_BY_LOBBY
 DENIED_BY_USER --stop transact
 DENIED_BY_LOBBY --stop transact
---invite
-WAITING_CONFIRM_LOBBY --to WAITING_USER OR DENIED_CONFIRM //invitation hidden
-DENIED_CONFIRM --delete lobby_join_request and delete lobby_invitations
-
-confirm = check_join
 */
-CREATE TYPE lobby_join_request_status AS ENUM('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
+CREATE TYPE lobby_join_request_status AS ENUM('WAITING_LOBBY', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
 CREATE TABLE lobby_users(
     id_user integer REFERENCES users NOT NULL,
     id_lobby integer REFERENCES lobbys NOT NULL,
@@ -69,53 +63,3 @@ CREATE TABLE lobby_users(
     ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
-/*
-CREATE TABLE lobby_members(
-    id_user integer REFERENCES users NOT NULL UNIQUE,
-    id_lobby integer REFERENCES lobbys NOT NULL,
-    PRIMARY KEY(id_lobby, id_user),
-    joined_at timestamptz NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE log_lobby_requests(
-  id_user integer REFERENCES users NOT NULL,
-  id_lobby integer REFERENCES lobbys NOT NULL,
-  status lobby_join_request_status NOT NULL,
-  done_at timestamptz NOT NULL,
-  created_at timestamptz NOT NULL,
-  history json
-);
-
-CREATE TABLE log_lobby_ban(
-    id_user integer REFERENCES users NOT NULL,
-    id_lobby integer REFERENCES lobbys NOT NULL,
-    ban_resolved_at timestamptz,
-    created_at timestamptz,
-    created_by integer REFERENCES users NOT NULL,
-
-);
-*/
-/*
-join
-leave
-*/
-/*
-CREATE TYPE lobby_notifications_type AS ENUM('JOIN', 'LEAVE', 'INVITATION');
-
-CREATE TABLE lobby_notifications(
-  id bigserial PRIMARY KEY,
-  type lobby_notifications_type NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE lobby_notifications_creators(
-
-);
-
-CREATE TABLE lobby_notification_consumers(
-  id_notification integer REFERENCES lobby_notifications NOT NULL,
-  id_user integer REFERENCES users NOT NULL,
-  PRIMARY KEY(id_notification, id_user),
-  seen boolean NOT NULL DEFAULT FALSE
-);
-*/

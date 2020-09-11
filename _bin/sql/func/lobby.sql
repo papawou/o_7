@@ -11,10 +11,6 @@ creator
 manager
   accept
   deny
-//invite
-creator
-	create --if trust_invite update to WAITING_USER
-	cancel
 
 ban
 set_specific_perms
@@ -60,7 +56,10 @@ BEGIN
   ELSE IF __lobby_params.privacy!='FRIEND'::lobby_privacy THEN
     PERFORM FROM user_followers WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
     IF FOUND THEN __viewer_perms:=__lobby_params.auth_follower;
-    ELSE IF __lobby_params.privacy='GUEST'::lobby_privacy THEN __viewer_perms:=__lobby_params.auth_default; ELSE RAISE EXCEPTION 'unauth'; END IF;
+    ELSE IF __lobby_params.privacy='GUEST'::lobby_privacy THEN
+        __viewer_perms:=__lobby_params.auth_default;
+        ELSE RAISE EXCEPTION 'unauth';
+        END IF;
     END IF;
   ELSE
     RAISE EXCEPTION 'unauth';
@@ -102,7 +101,7 @@ $$ LANGUAGE plpgsql;
 
 --JOIN_REQUEST
 --user
-CREATE OR REPLACE FUNCTION lobby_request_create(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
+CREATE OR REPLACE FUNCTION lobby_user_join_request_create(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
 DECLARE
   __lobby_params lobbys%rowtype;
 BEGIN
@@ -134,12 +133,11 @@ BEGIN
       AND ban_resolved_at<NOW() 
       AND last_attempt+interval'00:01:00'<NOW()
       AND status NOT IN ('WAITING_USER', 'WAITING_LOBBY');
-  
   RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_request_accept(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_user_join_request_confirm(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 DECLARE
   __lobby_params lobbys%rowtype;
   __viewer_perms integer;
@@ -175,7 +173,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_request_cancel(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_user_join_request_cancel(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   UPDATE lobby_users SET status='DENIED_BY_USER',
                          last_attempt=NOW()
@@ -187,7 +185,7 @@ END
 $$ LANGUAGE plpgsql;
 
 --lobby
-CREATE OR REPLACE FUNCTION lobby_manage_request_accept(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_manage_join_request_accept(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
@@ -199,7 +197,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION lobby_manage_request_deny(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_manage_join_request_deny(_id_viewer integer, _id_user integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
@@ -209,45 +207,6 @@ BEGIN
     WHERE id_lobby=_id_lobby
       AND id_user=_id_user
       AND status IN ('WAITING_CONFIRM_LOBBY', 'WAITING_LOBBY', 'WAITING_USER');
-END
-$$ LANGUAGE plpgsql;
-
---INVITATIONS
---creator
-CREATE OR REPLACE FUNCTION lobby_invite(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
-DECLARE
-  __id_owner integer;
-  __check_join boolean;
-  __trust_invite boolean;
-BEGIN
-  SELECT id_owner, check_join INTO __id_owner, __check_join FROM lobbys WHERE id=_id_lobby FOR SHARE;
-
-  --target_ban
-  SELECT pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_target, __id_owner),greatest(_id_target, __id_owner)));
-  PERFORM FROM user_bans WHERE id_usera=least(_id_target, __id_owner) AND id_userb=greatest(_id_viewer, __id_owner) AND ban_resolved_at < NOW();
-  IF FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
-
-  --are friends ?
-  PERFORM FROM user_friends WHERE id_usera=least(_id_viewer, _id_target) AND id_userb=greatest(_id_viewer, _id_target) FOR SHARE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'users not friend'; END IF;
-
-  SELECT (cached_perms>0 OR !__check_join) INTO __trust_invite FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby FOR SHARE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'viewer not member'; END IF;
-
-  INSERT INTO lobby_users(id_lobby, id_user, status, created_by)
-    VALUES (_id_lobby, _id_target, CASE WHEN __trust_invite THEN 'WAITING_USER' ELSE 'WAITING_CONFIRM_LOBBY' END, _id_viewer)
-    ON CONFLICT(id_lobby, id_user) DO UPDATE SET status=EXCLUDED.status, created_by=_id_viewer
-      WHERE ban_resolved_at < NOW()
-         AND fk_member IS NULL
-         AND (status NOT IN ('WAITING_USER', CASE WHEN 'WAITING_CONFIRM_LOBBY' THEN 'WAITING_LOBBY' END) OR status IS NULL);
-END
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
-BEGIN
-  UPDATE lobby_users SET status=NULL
-    WHERE id_user=_id_target AND id_lobby=_id_lobby AND created_by=_id_viewer AND status='WAITING_CONFIRM_LOBBY';
-  RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
 

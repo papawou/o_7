@@ -10,8 +10,6 @@ type Viewer implements UserInterface {
 
   followers: FollowerConnection!
   followings: FollowingConnection!
-
-  friendshiprequests: FriendshipRequestConnection
 }
 
 extend type Query {
