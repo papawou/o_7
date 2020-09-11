@@ -1,93 +1,96 @@
-import { GamePlatformEdge, GamePlatform, GameCross } from "./GamePlatform"
+import { Platform } from "./Platform"
+import { GameCross } from "./GameCross"
 
 export const schema = `
 type Game {
   id: ID!
   name: String!
 
-  gamecross(id: ID!): GameCross
-
-  platform(id: ID!): GamePlatform
-  platforms: GamePlatformsConnection
-}
-
-type GamePlatformsConnection {
-  edges: [GamePlatformEdge]!
+  platforms: [Platform]!
+  crosses: [GameCross]!
 }
 
 extend type Query {
   game(id: ID!): Game
-}`
+}
+`
 export const resolvers = {
   Query: {
-    game: (obj, { id }, ctx, info) => Game.gen(id, ctx)
+    game: async (obj, { id }, ctx, info) => {
+      return await Game.gen(ctx, Game.decode(id))
+    }
   }
 }
 
 export class Game {
   constructor(game) {
-    this.id = game.id
+    this._id = game.id
     this.name = game.name
+
+    this.id = Game.encode(this._id)
   }
   static __typename = 'Game'
 
+  //fields
   async platforms(args, ctx) {
-    return GamePlatformsConnection.gen(this.id, ctx)
+    let ids_platform = ctx.db.any("SELECT id_platform FROM game_platform WHERE id_game=$1", [this._id])
+    return await Promise.all(ids_platform.map(id_platform => Platform.gen(ctx, id_platform)))
   }
-  async platform({ id }, ctx) {
-    return GamePlatform.gen(this.id, id, ctx)
-  }
-  async gamecross({ id }, ctx) {
-    return GameCross.gen(this.id, id, ctx)
+  async crosses(args, ctx) {
+    let ids_cross = ctx.db.any("SELECT DISTINCT id_cross FROM game_platform WHERE id_game=$1", [this._id])
+    return await Promise.all(ids_cross.map(id_cross => GameCross.gen(ctx, this._id, id_cross)))
   }
 
-  static async gen(id, ctx) {
-    let game = await ctx.dl.game.load(parseInt(id))
+  //fetch
+  static async gen(ctx, id) {
+    let game = await ctx.dl.game.load(Game.encode(id))
     return game ? new Game(game) : null
   }
-  static async load(ids, ctx) {
-    let games = await ctx.db.any(`
-    SELECT row_to_json(games.*) as data
-    FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
-      LEFT JOIN games ON games.id=key_id
-    ORDER BY ordinality`, [ids])
-    return games.map(game => game.data)
+
+  //dataloader
+  static async load(ctx, cids) {
+    let cached_nodes = await ctx.redis.mget(cids)
+    let pg_ids = []
+
+    for (let i = 0; i < cached_nodes.length; i++) {
+      if (cached_nodes[i] == null)
+        pg_ids.push(Game.decode(cids[i]))
+      else
+        cached_nodes[i] = JSON.parse(cached_nodes[i])
+    }
+
+    if (pg_ids.length > 0) {
+      let pg_nodes = await ctx.db.any(`
+        SELECT row_to_json(games.*) as data
+          FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
+          LEFT JOIN games ON games.id=key_id
+          ORDER BY ordinality
+        `, [pg_ids])
+
+      let pg_map = new Map()
+      for (let i = 0; i < cached_nodes.length; i++) {
+        if (cached_nodes[i] == null) {
+          if (pg_nodes[0].data !== null) {
+            pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
+            cached_nodes[i] = pg_nodes.shift().data
+          }
+          else
+            pg_nodes.shift()
+        }
+      }
+      if (pg_map.size > 0)
+        await ctx.redis.mset(pg_map)
+    }
+
+    return cached_nodes
   }
-}
 
-export class GamePlatformsConnection {
-  constructor(id_game, ids_platform) {
-    this._id_game = id_game
-    this._ids_platform = ids_platform
-  }
-  static __typename = 'GamePlatformsConnection'
-
-  async edges(args, ctx) {
-    return this._ids_platform.map(id_platform => GamePlatformEdge.gen(this._id_game, id_platform, ctx))
+  //utils
+  static encode(id_game) {
+    return Game.__typename + '_' + id_game
   }
 
-  /*
-  DL.cache connection ?
-
-  fetch edgeids ?
-  fetch edges AND DL.prime ?
-
-  fetch only nodeids ? --loose edge data
-  fetch nodes AND DL.prime ? --loose edge data
-  */
-
-  //FETCH EDGEIDS
-  static async gen(id_game, ctx) {
-    let ids = await ctx.dl.gameplatforms.load(id_game)
-    return ids ? new GamePlatformsConnection(id_game, ids) : null
-  }
-  static async load(ids, ctx) {
-    let gamesplatforms = await ctx.db.any(`
-    SELECT array_remove(array_agg(game_platforms.id_platform),null) as edges_id
-      FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
-        LEFT JOIN game_platforms ON game_platforms.id_game=key_id
-    GROUP BY ordinality, game_platforms.id_game ORDER BY ordinality`, [ids])
-
-    return gamesplatforms.map(gameplatforms => gameplatforms.edges_id)
+  static decode(cid) {
+    return cid.slice(Game.__typename.length + 1)
   }
 }

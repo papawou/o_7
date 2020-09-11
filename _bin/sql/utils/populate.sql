@@ -5,4 +5,20 @@ INSERT INTO platforms(name) VALUES ('ps4'),
 INSERT INTO game_platforms(id_game, id_platform, id_cross) VALUES (1,1,1),(1,2,1),(1,3,1),
                                                                   (2,1,null),(2,2,null),
                                                                   (3,1,null),(3,2,1),(3,3,1);
-INSERT INTO users(name, password) VALUES('papawa', 'aknesjopa'),('test','test'),('zboub','test');
+INSERT INTO users(name, password) VALUES('papawa', 'test'),('test','test'),('zboub','test'),('testo', 'test');
+
+INSERT INTO friendships
+    (id_userA, id_userB)
+VALUES
+    (1,2),
+    (1,3),
+    (1,4),
+    (2,4);
+
+INSERT INTO follows
+    (id_follower, id_following)
+VALUES
+    (1,2),
+    (1,3),
+    (1,4),
+    (2,4);

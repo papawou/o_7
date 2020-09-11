@@ -5,6 +5,9 @@
     },
     "exclude": [
         "node_modules",
-        "**/node_modules"
+        "**/node_modules",
+        "_bin",
+        "frontend",
+        "src/api/graphql/schemas/__example"
     ]
 }

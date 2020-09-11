@@ -1,78 +1,90 @@
-import { PlatformGameEdge, GamePlatform } from "./GamePlatform"
+import { Game } from "./Game"
 
 export const schema = `
 type Platform {
   id: ID!
   name: String!
-  
-  game(id: ID!): GamePlatform
-  games: PlatformGamesConnection
-}
 
-type PlatformGamesConnection {
-  edges: [PlatformGameEdge]!
+	games: [Game]!
 }
 
 extend type Query {
   platform(id: ID!): Platform
-}`
-
+}
+`
 export const resolvers = {
-  Query: {
-    platform: (obj, { id }, ctx, info) => Platform.gen(id, ctx)
-  }
+	Query: {
+		platform: async (obj, { id }, ctx, info) => {
+			return await Platform.gen(ctx, Platform.decode(id))
+		}
+	}
 }
 
 export class Platform {
-  constructor(platform) {
-    this.id = platform.id
-    this.name = platform.name
-  }
-  static __typename = 'Platform'
+	constructor(platform) {
+		this._id = platform.id
+		this.name = platform.name
 
-  async games(args, ctx) {
-    return PlatformGamesConnection.gen(this.id, ctx)
-  }
-  async game({ id }, ctx) {
-    return GamePlatform.gen(id, this.id)
-  }
+		this.id = Platform.encode(platform.id)
+	}
+	static __typename = 'Platform'
 
-  static async gen(id, ctx) {
-    let platform = await ctx.dl.platform.load(parseInt(id))
-    return platform ? new Platform(platform) : null
-  }
-  static async load(ids, ctx) {
-    let platforms = await ctx.db.any(`
-    SELECT row_to_json(platforms.*) as data
-    FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id LEFT JOIN platforms ON platforms.id=key_id
-    ORDER BY ordinality`, [ids])
-    return platforms.map(platform => platform.data)
-  }
-}
+	//fields
+	async games(args, ctx) {
+		let ids_game = ctx.db.any("SELECT id_game FROM game_platform WHERE id_platform=$1", [this._id])
+		return await Promise.all(ids_game.map(id_game => Game.gen(ctx, id_game)))
+	}
 
-export class PlatformGamesConnection {
-  constructor(id_platform, ids_game) {
-    this._id_platform = id_platform
-    this._ids_game = ids_game
-  }
-  static __typename = 'PlatformGamesConnection'
+	//fetch
+	static async gen(ctx, id) {
+		let platform = await ctx.dl.platform.load(Platform.encode(id))
+		return platform ? new Platform(platform) : null
+	}
 
-  async edges(args, ctx) {
-    return this._ids_game.map(id_game => PlatformGameEdge.gen(id_game, this._id_platform, ctx))
-  }
+	//dataloader
+	static async load(ctx, cids) {
+		let cached_nodes = await ctx.redis.mget(cids)
+		let pg_ids = []
 
-  //FETCH EDGEIDS
-  static async gen(id_platform, ctx) {
-    let ids = await ctx.dl.platformgames.load(id_platform)
-    return ids ? new PlatformGamesConnection(id_platform, ids) : null
-  }
-  static async load(ids, ctx) {
-    let platformsgames = await ctx.db.any(`
-    SELECT array_remove(array_agg(game_platforms.id_game),null) as edges_id
-      FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
-        LEFT JOIN game_platforms ON game_platforms.id_platform=key_id
-    GROUP BY ordinality, game_platforms.id_platform ORDER BY ordinality`, [ids])
+		for (let i = 0; i < cached_nodes.length; i++) {
+			if (cached_nodes[i] == null)
+				pg_ids.push(Platform.decode(cids[i]))
+			else
+				cached_nodes[i] = JSON.parse(cached_nodes[i])
+		}
 
-    return platformsgames.map(platformgames => platformgames.edges_id)
-  }
+		if (pg_ids.length > 0) {
+			let pg_nodes = await ctx.db.any(`
+        SELECT row_to_json(platforms.*) as data
+          FROM unnest(ARRAY[$1:csv]::integer[]) WITH ORDINALITY key_id
+          LEFT JOIN platforms ON platforms.id=key_id
+          ORDER BY ordinality
+        `, [pg_ids])
+
+			let pg_map = new Map()
+			for (let i = 0; i < cached_nodes.length; i++) {
+				if (cached_nodes[i] == null) {
+					if (pg_nodes[0].data !== null) {
+						pg_map.set(cids[i], JSON.stringify(pg_nodes[0].data))
+						cached_nodes[i] = pg_nodes.shift().data
+					}
+					else
+						pg_nodes.shift()
+				}
+			}
+			if (pg_map.size > 0)
+				await ctx.redis.mset(pg_map)
+		}
+
+		return cached_nodes
+	}
+
+	//utils
+	static encode(id_platform) {
+		return Platform.__typename + '_' + id_platform
+	}
+
+	static decode(cid) {
+		return cid.slice(Platform.__typename.length + 1)
+	}
 }

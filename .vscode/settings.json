@@ -1,3 +1,8 @@
 {
-    "debug.node.autoAttach": "off"
+    "debug.node.autoAttach": "off",
+    "files.exclude": {
+        "node_modules/": true
+    },
+    "editor.tabSize": 2,
+    "editor.insertSpaces": false
 }
