@@ -3,15 +3,6 @@ create
 join
 leave
 
---JOIN_REQUEST
-creator
-  create
-  confirm
-  deny --cancel
-manager
-  accept
-  deny
-
 ban
 set_specific_perms
 set_owner
@@ -47,14 +38,14 @@ BEGIN
   
   --check_ban
   SELECT pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner),greatest(_id_viewer, __lobby_params.id_owner)));
-  PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) AND ban_resolved_at < NOW ();
+  PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) AND ban_resolved_at < NOW ();
   IF FOUND THEN RAISE EXCEPTION 'users_ban'; END IF;
 
     --perms
-  PERFORM FROM user_friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
+  PERFORM FROM friendships WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
   IF FOUND THEN __viewer_perms:=__lobby_params.auth_friend;
   ELSE IF __lobby_params.privacy!='FRIEND'::lobby_privacy THEN
-    PERFORM FROM user_followers WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
+    PERFORM FROM follows WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
     IF FOUND THEN __viewer_perms:=__lobby_params.auth_follower;
     ELSE IF __lobby_params.privacy='GUEST'::lobby_privacy THEN
         __viewer_perms:=__lobby_params.auth_default;
@@ -75,6 +66,8 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+
+--deadlock ?
 CREATE OR REPLACE FUNCTION lobby_leave(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 DECLARE
   __was_owner boolean;
@@ -99,7 +92,16 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+/*
 --JOIN_REQUEST
+creator
+  create to WAITING_LOBBY
+  confirm WAITING_USER to DONED_REQUEST
+  deny to DONED_REQUEST --or cancel if status=WAITING_LOBBY
+manager
+  accept WAITING_LOBBY to WAITING_USER
+  deny  WAITING_LOBBY to DONED_REQUEST
+*/
 --user
 CREATE OR REPLACE FUNCTION lobby_user_join_request_create(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
 DECLARE
@@ -118,11 +120,11 @@ BEGIN
   IF FOUND THEN RAISE EXCEPTION 'users_ban'; END IF;
 
   --perms
-  PERFORM FROM user_friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
+  PERFORM FROM friendships WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
   IF NOT FOUND AND __lobby_params.privacy='FRIEND' THEN
     RAISE EXCEPTION 'not friends';
   ELSE IF __lobby_params.privacy='FOLLOWER' THEN
-    PERFORM FROM user_followers WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
+    PERFORM FROM follows WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
   END IF; END IF;
   
@@ -131,7 +133,7 @@ BEGIN
     ON CONFLICT (id_user, id_lobby) DO UPDATE SET status='WAITING_LOBBY'
     WHERE fk_member IS NULL
       AND ban_resolved_at<NOW() 
-      AND last_attempt+interval'00:01:00'<NOW()
+      AND request_resolved_at+interval'00:01:00'<NOW()
       AND status NOT IN ('WAITING_USER', 'WAITING_LOBBY');
   RETURN FOUND;
 END
@@ -147,10 +149,10 @@ BEGIN
 	
   SELECT pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner),greatest(_id_viewer, __lobby_params.id_owner)));
     --perms
-  PERFORM FROM user_friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
+  PERFORM FROM friendships WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND greatest(_id_viewer, __lobby_params.id_owner) FOR SHARE;
   IF FOUND THEN __viewer_perms:=__lobby_params.auth_friend;
   ELSE IF __lobby_params.privacy!='FRIEND'::lobby_privacy THEN
-    PERFORM FROM user_followers WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
+    PERFORM FROM follows WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR SHARE;
     IF FOUND THEN __viewer_perms:=__lobby_params.auth_follower;
     ELSE IF __lobby_params.privacy='GUEST'::lobby_privacy THEN __viewer_perms:=__lobby_params.auth_default; ELSE RAISE EXCEPTION 'unauth'; END IF;
     END IF;
@@ -160,7 +162,7 @@ BEGIN
   
   UPDATE lobby_users SET fk_member=_id_viewer,
                          status=NULL,
-                         last_attempt=NULL,
+                         request_resolved_at=NULL,
                          joined_at=NOW(),
                          cached_perms=__viewer_perms
     WHERE id_user=_id_viewer
@@ -176,7 +178,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION lobby_user_join_request_cancel(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
   UPDATE lobby_users SET status='DENIED_BY_USER',
-                         last_attempt=NOW()
+                         ban_resolved_at=NOW()
     WHERE id_user=_id_viewer
       AND id_lobby=_id_lobby
       AND status IN ('WAITING_LOBBY', 'WAITING_USER');
@@ -252,7 +254,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_update_privacy(_id_viewer integer, _id_lobby integer, _lobby_privacy lobby_privacy) RETURNS boolean AS $$
 BEGIN
-  UPDATE lobbys SET privacy=_lobby_privacy WHERE id=_id_lobby AND _id_viewer=_id_viewer AND privacy<>_lobby_privacy;
+  UPDATE lobbys SET privacy=_lobby_privacy WHERE id=_id_lobby AND id_owner=_id_viewer AND privacy<>_lobby_privacy;
   IF NOT FOUND THEN RAISE EXCEPTION 'failed change privacy'; END IF;
 END
 $$ LANGUAGE plpgsql;
