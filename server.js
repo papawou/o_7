@@ -27,23 +27,6 @@ app.use(express.urlencoded({ extended: true }))
 //DEVELOPMENT
 if (environment === 'development') {
     console.log('o==3 DEVELOPMENT STARTING... o==3')
-    let enable_webpack = false
-    //WEBPACK
-    if (enable_webpack) {
-        console.log('WEBPACK STARTING...')
-        const webpack = require('webpack');
-        const webpackDevMiddleware = require('webpack-dev-middleware')
-
-        const config = require('./webpack.dev.config.js')
-        const compiler = webpack(config);
-
-        app.use(webpackDevMiddleware(compiler, {
-            noInfo: true,
-            publicPath: config.output.publicPath,
-            hot: true
-        }))
-        app.use(require("webpack-hot-middleware")(compiler))
-    }
 }
 else {
     console.log('!!! PRODUCTION STARTING... !!!')

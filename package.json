@@ -6,10 +6,8 @@
 	"main": "server.js",
 	"scripts": {
 		"debug": "cross-env NODE_ENV=development nodemon --inspect-brk --ignore './frontend/' --exec babel-node server.js",
-		"start:prod": "( npm run prod:build ) && ( npm run prod:start )",
 		"prod:start": "cross-env NODE_ENV=production babel-node ./server.js",
-		"prod:build": "webpack --mode=production --config webpack.prod.config.js --display-error-details",
-		"start:dev": "cross-env NODE_ENV=development nodemon --ignore './frontend/' --exec babel-node server.js"
+		"start:dev": "cross-env NODE_ENV=development nodemon --exec babel-node server.js"
 	},
 	"keywords": [],
 	"author": "",
