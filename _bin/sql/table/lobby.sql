@@ -33,33 +33,31 @@ CREATE TABLE lobby_slots(
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
-/*
-WAITING_LOBBY --to WAITING_USER OR DENIED_BY_LOBBY
-DENIED_BY_USER --stop transact
-DENIED_BY_LOBBY --stop transact
-*/
-CREATE TYPE lobby_join_request_status AS ENUM('WAITING_LOBBY', 'DENIED_BY_USER', 'DENIED_BY_LOBBY');
+CREATE TYPE lobby_active_joinrequest_status AS ENUM('WAITING_USER', 'WAITING_LOBBY');
 CREATE TABLE lobby_users(
     id_user integer REFERENCES users NOT NULL,
     id_lobby integer REFERENCES lobbys NOT NULL,
-    PRIMARY KEY(id_user, id_lobby),
+    PRIMARY KEY(id_lobby, id_user),
     --member
     fk_member integer REFERENCES users UNIQUE,
-    is_owner boolean,
+    is_owner boolean NOT NULL DEFAULT FALSE,
     cached_perms integer,
-    joined_at timestamptz,
-    CHECK(fk_member IS NULL
-            OR (fk_member=id_user
-                  AND is_owner IS NOT NULL
-                  AND cached_perms IS NOT NULL
-                  AND joined_at IS NOT NULL
-                  AND ban_resolved_at < NOW()
-                  AND status IS NULL)
-    ),
-    --invitation/lobby_join_request
-    status lobby_join_request_status,
-    updated_at timestamptz,
+    --lobby_join_request
+    status lobby_active_joinrequest_status,
+    history json, --WAITING_LOBBY to WAITING_USER
+    created_at timestamptz,
     --ban
     ban_resolved_at timestamptz
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
+
+CREATE TYPE lobby_log_joinrequest_status AS ENUM('CANCELED_BY_USER', 'CONFIRMED_BY_USER', 'DENIED_BY_USER', 'CANCELED_BY_LOBBY', 'DENIED_BY_LOBBY');
+CREATE TABLE log_lobby_requests(
+  id_user integer REFERENCES users NOT NULL,
+  id_lobby integer REFERENCES lobbys NOT NULL,
+  status lobby_log_joinrequest_status NOT NULL,
+  resolved_at timestamptz NOT NULL DEFAULT NOW(),
+  resolved_by integer REFERENCES users NOT NULL,
+  CHECK((resolved_by=id_user AND ('CANCELED_BY_USER' OR 'DENIED_BY_USER' OR 'CONFIRMED_BY_USER')) OR (resolved_by<>id_user AND('CANCELED_BY_LOBBY' OR 'DENIED_BY_LOBBY'))),
+  log_history json --{chat: [{sended_at: timestamptz, data: text}], actions: [{created_by: , action: , created_at: }]}
+);
