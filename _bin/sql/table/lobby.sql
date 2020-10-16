@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_users, log_lobby_requests CASCADE;
-DROP TYPE IF EXISTS lobby_privacy, lobby_active_joinrequest_status, lobby_log_joinrequest_status CASCADE;
+DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_users, log_lobby_joinrequests, lobby_invitations CASCADE;
+DROP TYPE IF EXISTS lobby_privacy, lobby_active_joinrequest_status, log_lobby_joinrequest_status CASCADE;
 /*
 code_auth: can_invite
 */
@@ -24,7 +24,7 @@ CREATE TABLE lobbys(
 
   --o7 config
   sound_mic integer DEFAULT NULL, -- 1 sound required, 2 sound+mic required
-  CHECK(0 < sound_mic < 3 OR sound_mic IS NULL),
+  CHECK((0 < sound_mic AND sound_mic < 3) OR sound_mic IS NULL),
   url_voice_chat VARCHAR(70) DEFAULT NULL,
   lang VARCHAR(3) DEFAULT NULL,
   --game config
@@ -43,7 +43,7 @@ CREATE TABLE lobby_slots(
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
-CREATE TYPE lobby_active_joinrequest_status AS ENUM('WAITING_USER', 'WAITING_LOBBY');
+CREATE TYPE lobby_active_joinrequest_status AS ENUM('WAITING_USER', 'WAITING_LOBBY', 'INV_USER', 'INV_WAITING_USER', 'INV_WAITING_LOBBY');
 CREATE TABLE lobby_users(
   id_user integer REFERENCES users NOT NULL,
   id_lobby integer REFERENCES lobbys NOT NULL,
@@ -52,23 +52,23 @@ CREATE TABLE lobby_users(
   fk_member integer REFERENCES users UNIQUE,
   UNIQUE(id_lobby, fk_member),
   is_owner boolean NOT NULL DEFAULT FALSE,
-  cached_perms integer,
+  --default_perms integer,
+  perms integer,
   joined_at timestamptz,
   --lobby_joinrequest
   joinrequest_status lobby_active_joinrequest_status,
-  joinrequest_updated_at timestamptz,
-  joinrequest_history jsonb,
   --ban
   ban_resolved_at timestamptz,
-  CHECK(((fk_member IS NOT NULL AND is_owner IS NOT NULL AND cached_perms IS NOT NULL AND joined_at IS NOT NULL AND (joinrequest_status IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
-           OR (fk_member IS NULL AND is_owner IS NULL AND cached_perms IS NULL AND joined_at IS NULL))
-          AND ((joinrequest_status IS NOT NULL AND joinrequest_updated_at IS NOT NULL AND (fk_member IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
-                 OR (joinrequest_status IS NULL AND joinrequest_updated_at IS NULL AND joinrequest_history IS NULL))
+  CHECK(((fk_member IS NOT NULL AND is_owner IS NOT NULL AND perms IS NOT NULL AND joined_at IS NOT NULL AND (joinrequest_status IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
+           OR (fk_member IS NULL AND is_owner IS NULL AND perms IS NULL AND joined_at IS NULL))
+          AND ((joinrequest_status IS NOT NULL AND (fk_member IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
+                 OR (joinrequest_status IS NULL))
           AND ((ban_resolved_at < NOW() AND joinrequest_status IS NULL AND fk_member IS NULL)
                  OR ban_resolved_at IS NULL))
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
 
+/*
 CREATE TYPE log_lobby_joinrequest_status AS ENUM('CANCELED_BY_USER', 'CONFIRMED_BY_USER', 'DENIED_BY_USER', 'CANCELED_BY_LOBBY', 'DENIED_BY_LOBBY');
 CREATE TABLE log_lobby_joinrequests(
   id_user integer REFERENCES users NOT NULL,
@@ -81,17 +81,13 @@ CREATE TABLE log_lobby_joinrequests(
   created_at timestamptz,
   PRIMARY KEY(id_lobby, id_user, resolved_at)
 );
-
-/*
-lobby_invitation ->
-trusted_invite ?
-    request accepted cause of trusted_invite
-  : need confirmation
 */
+
 CREATE TABLE lobby_invitations(
   id_creator integer REFERENCES users,
   id_target integer REFERENCES users,
   PRIMARY KEY(id_creator, id_target),
   id_lobby integer REFERENCES lobbys,
-  FOREIGN KEY(id_creator, id_lobby) REFERENCES lobby_users(fk_member, id_lobby)
+  FOREIGN KEY(id_creator, id_lobby) REFERENCES lobby_users(fk_member, id_lobby),
+  FOREIGN KEY(id_target, id_lobby) REFERENCES lobby_users(id_user, id_lobby)
 );
