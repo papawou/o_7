@@ -191,15 +191,16 @@ BEGIN
   PERFORM FROM lobby_users
     WHERE joinrequest_status IN('INV_WAITING_USER', 'INV_WAITING_LOBBY')
       AND id_lobby=__id_lobby
-      AND id_user=ANY(SELECT id_target FROM lobby_invitations WHERE id_creator=_id_viewer AND id_lobby=__id_lobby FOR UPDATE) FOR UPDATE;
+      AND id_user IN(SELECT id_target FROM lobby_invitations WHERE id_creator=_id_viewer AND id_lobby=__id_lobby FOR UPDATE) FOR UPDATE;
 
   WITH del_lobby_invitations AS (
     DELETE FROM lobby_invitations WHERE id_creator=_id_viewer AND id_lobby=__id_lobby RETURNING id_target
 	)
 	SELECT array_agg(id_target) INTO __ids_target FROM del_lobby_invitations;
+	RAISE NOTICE 'test';
 
   DELETE FROM lobby_users
-    WHERE id_user IN(__ids_target)
+    WHERE id_user=ANY(__ids_target)
       AND id_lobby=__id_lobby
       AND joinrequest_status IN('INV_WAITING_USER','INV_WAITING_LOBBY')
       AND NOT EXISTS(SELECT FROM lobby_invitations WHERE id_target=lobby_users.id_user AND id_lobby=__id_lobby FOR SHARE);
@@ -333,7 +334,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'update not needed'; END IF;
 
   IF _check_join IS FALSE THEN
-    SELECT FROM lobby_users WHERE id_lobby=_id_lobby AND joinrequest_status<>'INV_WAITING_USER' FOR UPDATE;
+    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND joinrequest_status<>'INV_WAITING_USER' FOR UPDATE;
 
 	  UPDATE lobby_users SET joinrequest_status='INV_WAITING_USER'
 	    WHERE id_lobby=_id_lobby
