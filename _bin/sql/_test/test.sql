@@ -1,12 +1,12 @@
-CREATE TABLE json_test(
-    id serial,
-    PRIMARY KEY(id),
-    jsoned json
-);
+SELECT lobby_create(1,5,true, 'DEFAULT',1,0,0);
 
-INSERT INTO json_test(jsoned) VALUES('[{"test": 4}, {"testo": "rsdsds"}]')
+SELECT lobby_join(4, 1);
+SELECT lobby_leave(4, 1);
 
-SELECT '[{"test": 4}, {"testo": "rsdsds"}]'::jsonb||'[{"aada":2
-}]';
+SELECT lobby_user_joinrequest_deny(2,4);
 
-SELECT json_build_array(jsonb_build_object('action',  'WAITING_LOBBY', 'created_by', 1, 'created_at', NOW()))
+SELECT lobby_manage_joinrequest_accept(1,3,1);
+SELECT lobby_manage_joinrequest_deny(2,1,1);
+
+SELECT lobby_invite_create(1,1,3);
+SELECT lobby_invite_cancel(4,1,3);
