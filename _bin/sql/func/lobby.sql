@@ -7,11 +7,10 @@ BASICS
 	  =lobby_user_joinrequest_confirm
 		=lobby_invite_confirm
 		allowed_to_join ?
-			- update joinrequest_status IN('INV_WAITING_USER', 'INV_WAITING_LOBBY) to ('WAITING_USER', 'WAITING_LOBBY)
-		RETURN has_joined ? 1 : 2 (request created)
+			update joinrequest_status IN('INV_WAITING_USER', 'INV_WAITING_LOBBY) to ('WAITING_USER', 'WAITING_LOBBY)
+		RETURN has_joined ? 1 : 2
 --member
 	lobby_leave
-		*refresh lobby_users.authz when lobby change owner
 REQUEST
 --user
 	lobby_user_joinrequest_create
@@ -119,7 +118,8 @@ BEGIN
     	      is_owner=CASE WHEN __lobby_params.check_join IS FALSE OR lobby_users.joinrequest_status IN('WAITING_USER','INV_WAITING_USER') THEN FALSE END,
     	      authz=CASE WHEN __lobby_params.check_join IS FALSE OR lobby_users.joinrequest_status IN('WAITING_USER','INV_WAITING_USER') THEN __viewer_perms END,
             joinrequest_status=CASE WHEN __lobby_params.check_join AND lobby_users.joinrequest_status NOT IN('WAITING_USER', 'INV_WAITING_USER', 'WAITING_LOBBY') THEN 'WAITING_LOBBY'::lobby_active_joinrequest_status END
-      WHERE lobby_users.fk_member IS NULL AND (lobby_users.ban_resolved_at < NOW() OR lobby_users.ban_resolved_at IS NULL) AND (__lobby_params.check_join IS FALSE
+      WHERE lobby_users.fk_member IS NULL AND (lobby_users.ban_resolved_at < NOW() OR lobby_users.ban_resolved_at IS NULL)
+        AND (__lobby_params.check_join IS FALSE
                OR lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
                OR (__lobby_params.check_join AND lobby_users.joinrequest_status NOT IN('WAITING_USER', 'INV_WAITING_USER', 'WAITING_LOBBY')))
 			RETURNING fk_member IS NOT NULL INTO __has_joined;
@@ -255,6 +255,7 @@ BEGIN
       AND id_user=_id_target
       AND joinrequest_status IN ('WAITING_USER', 'WAITING_LOBBY', 'INV_WAITING_USER', 'INV_WAITING_LOBBY');
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_joinrequest not found'; END IF;
+	--lobby_invitations ON DELETE CASCADE
 
   RETURN true;
 END
@@ -278,7 +279,7 @@ BEGIN
   SELECT (0 < authz OR __check_join IS FALSE) INTO __trust_invite FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'user not lobby_member'; END IF;
 
-  --always update if allowed to add lobby_invitations / caveat ? advisory lock?
+  --always update if allowed to add lobby_invitations
   INSERT INTO lobby_users(id_user, id_lobby, joinrequest_status)
     VALUES(_id_target,
            _id_lobby,
@@ -483,6 +484,10 @@ BEGIN
 		WHERE id_lobby=_id_lobby AND _max_slots<>max_slots FOR NO KEY UPDATE; --prevent left
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_slots not found'; END IF;
 
+	UPDATE lobby_slots SET max_slots=_max_slots,
+	                       free_slots=CASE WHEN __change_slots < 0 THEN 0 ELSE __change_slots END
+		WHERE id_lobby=_id_lobby AND max_slots<>_max_slots;
+
 	IF __change_slots < 0 THEN
 		DELETE FROM lobby_users
 			WHERE fk_member IN(
@@ -490,11 +495,6 @@ BEGIN
 		      WHERE fk_member IS NOT NULL AND id_lobby=_id_lobby AND is_owner IS FALSE
 		      FOR UPDATE LIMIT -__change_slots);
 	END IF;
-
-	UPDATE lobby_slots SET max_slots=_max_slots,
-	                       free_slots=CASE WHEN __change_slots < 0 THEN 0 ELSE __change_slots END
-		WHERE id_lobby=_id_lobby AND max_slots<>_max_slots;
-	IF NOT FOUND THEN RAISE EXCEPTION 'serialization fail'; END IF;
 
 	RETURN TRUE;
 END
