@@ -178,7 +178,6 @@ BEGIN
     END IF;
   END IF;
 
-  --leave lobby_users
   PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_viewer], _id_lobby);
 
   UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=__id_lobby;

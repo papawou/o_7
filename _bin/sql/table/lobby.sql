@@ -66,7 +66,6 @@ CREATE TABLE lobby_users(
 
   --lobby_joinrequest
   joinrequest_status lobby_active_joinrequest_status,
-
   --ban
   ban_resolved_at timestamptz,
 
