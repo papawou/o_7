@@ -1,6 +1,6 @@
-DROP EXTENSION pgcrypto;
+DROP EXTENSION IF EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-DROP FUNCTION gen_custom_ulid() CASCADE;
+DROP FUNCTION IF EXISTS gen_custom_ulid CASCADE;
 
 CREATE OR REPLACE FUNCTION gen_custom_ulid() RETURNS uuid AS $$
 DECLARE
@@ -8,7 +8,11 @@ DECLARE
     random_bytes bytea = gen_random_bytes(11);
     ulid bytea = '\x00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00';
 BEGIN
+<<<<<<< Updated upstream
     unix := (EXTRACT(EPOCH FROM NOW())*1000)::bigint::bit(43);
+=======
+    unix := EXTRACT(EPOCH FROM clock_timestamp())*1000::bigint::bit(43);
+>>>>>>> Stashed changes
 
     ulid := SET_BYTE(ulid, 0, (unix)::bit(8)::integer);
     ulid := SET_BYTE(ulid, 1, (unix << 8)::bit(8)::integer);
@@ -29,3 +33,5 @@ BEGIN
 
     RETURN encode(ulid,'hex');
 END $$ LANGUAGE plpgsql VOLATILE PARALLEL SAFE;
+
+SELECT (EXTRACT(EPOCH FROM statement_timestamp())*1000)::bigint::bit(43);
