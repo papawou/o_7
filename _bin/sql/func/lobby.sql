@@ -86,19 +86,19 @@ DECLARE
   __allowed_to_join boolean := FALSE;
   __has_joined boolean := FALSE;
 BEGIN
-  SELECT * INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
+  SELECT authz_friend, authz_follow, authz_default, privacy, id_owner, check_join INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
   PERFORM pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner),greatest(_id_viewer, __lobby_params.id_owner)));
-  PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
+  PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) FOR KEY SHARE;
   IF FOUND THEN RAISE EXCEPTION 'users_ban'; END IF;
   --perms
-	PERFORM FROM friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
+	PERFORM FROM friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) FOR KEY SHARE;
   IF FOUND THEN
     __viewer_perms := __lobby_params.authz_friend;
     __allowed_to_join := __lobby_params.privacy IN('FRIEND', 'FOLLOWER', 'DEFAULT');
   ELSE
-    PERFORM FROM follows WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner;
+    PERFORM FROM follows WHERE id_follower=_id_viewer AND id_following=__lobby_params.id_owner FOR KEY SHARE;
     IF FOUND THEN
       __viewer_perms := __lobby_params.authz_follow;
       __allowed_to_join := __lobby_params.privacy IN('FOLLOWER', 'DEFAULT');
@@ -121,10 +121,9 @@ BEGIN
     	      is_owner=CASE WHEN __lobby_params.check_join IS FALSE OR lobby_users.joinrequest_status IN('WAITING_USER','INV_WAITING_USER') THEN FALSE END,
     	      authz=CASE WHEN __lobby_params.check_join IS FALSE OR lobby_users.joinrequest_status IN('WAITING_USER','INV_WAITING_USER') THEN __viewer_perms END,
             joinrequest_status=CASE WHEN __lobby_params.check_join AND lobby_users.joinrequest_status NOT IN('WAITING_USER', 'INV_WAITING_USER', 'WAITING_LOBBY') THEN 'WAITING_LOBBY'::lobby_active_joinrequest_status END
-      WHERE lobby_users.fk_member IS NULL AND (lobby_users.ban_resolved_at < NOW() OR lobby_users.ban_resolved_at IS NULL)
-        AND (__lobby_params.check_join IS FALSE
-               OR lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
-               OR (__lobby_params.check_join AND lobby_users.joinrequest_status NOT IN('WAITING_USER', 'INV_WAITING_USER', 'WAITING_LOBBY')))
+        WHERE __lobby_params.check_join IS FALSE
+          OR lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
+          OR (__lobby_params.check_join AND lobby_users.joinrequest_status NOT IN('WAITING_USER', 'INV_WAITING_USER', 'WAITING_LOBBY'))
 			RETURNING fk_member IS NOT NULL INTO __has_joined;
 		IF NOT FOUND THEN RAISE EXCEPTION 'failed_1'; END IF;
   ELSE
@@ -132,7 +131,7 @@ BEGIN
                            is_owner=FALSE,
                            authz=__viewer_perms,
                            joinrequest_status=NULL
-      WHERE lobby_users.fk_member IS NULL AND lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER') AND (lobby_users.ban_resolved_at < NOW() OR ban_resolved_at IS NULL)
+      WHERE lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
       RETURNING fk_member IS NOT NULL INTO __has_joined;
     IF NOT FOUND THEN RAISE EXCEPTION 'failed_2'; END IF;
 	END IF;

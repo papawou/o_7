@@ -99,7 +99,7 @@ CREATE TABLE lobby_invitations(
   id_creator integer REFERENCES users,
   id_target integer REFERENCES users,
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
-  PRIMARY KEY(id_lobby, id_creator, id_target),
+  PRIMARY KEY(id_creator, id_target),
   FOREIGN KEY(id_creator, id_lobby) REFERENCES lobby_users(fk_member, id_lobby) DEFERRABLE,
   FOREIGN KEY(id_target, id_lobby) REFERENCES lobby_users(id_user, id_lobby) ON DELETE CASCADE
 );
