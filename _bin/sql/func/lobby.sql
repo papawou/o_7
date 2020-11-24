@@ -82,17 +82,18 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION lobby_join(_id_viewer integer, _id_lobby integer) RETURNS integer AS $$
 DECLARE
   __lobby_params lobbys%rowtype;
+  
   __viewer_perms integer;
   __allowed_to_join boolean := FALSE;
   __has_joined boolean := FALSE;
 BEGIN
-  SELECT authz_friend, authz_follow, authz_default, privacy, id_owner, check_join INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
+  SELECT * INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
+  --user
   PERFORM pg_advisory_xact_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner),greatest(_id_viewer, __lobby_params.id_owner)));
   PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) FOR KEY SHARE;
   IF FOUND THEN RAISE EXCEPTION 'users_ban'; END IF;
-  --perms
 	PERFORM FROM friends WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner) FOR KEY SHARE;
   IF FOUND THEN
     __viewer_perms := __lobby_params.authz_friend;
@@ -131,7 +132,7 @@ BEGIN
                            is_owner=FALSE,
                            authz=__viewer_perms,
                            joinrequest_status=NULL
-      WHERE lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
+      WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER')
       RETURNING fk_member IS NOT NULL INTO __has_joined;
     IF NOT FOUND THEN RAISE EXCEPTION 'failed_2'; END IF;
 	END IF;
@@ -147,12 +148,6 @@ END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_leave(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
-/*
-DELETE lobby_invitations
--> invited*lobby_users.id_joinrequest_creator ON DELETE SET NULL
-	-> trigger after update search_new_id_joinrequest_creator
-		 if not found delete invited*lobby_users
-*/
 DECLARE
   __id_lobby integer;
   __was_owner boolean;
@@ -165,7 +160,7 @@ BEGIN
 
   IF __was_owner IS TRUE THEN
     PERFORM FROM lobbys WHERE id=__id_lobby FOR UPDATE; --prevent join
-    SELECT fk_member INTO __new_owner FROM lobby_users WHERE id_lobby=__id_lobby AND fk_member IS NOT NULL LIMIT 1 FOR UPDATE; --prevent left
+    SELECT fk_member INTO __new_owner FROM lobby_users WHERE id_lobby=__id_lobby AND fk_member IS NOT NULL LIMIT 1 FOR UPDATE; --prevent leave
     IF NOT FOUND THEN --last lobby_member
       DELETE FROM lobbys WHERE id=__id_lobby;
     ELSE
@@ -176,7 +171,7 @@ BEGIN
       PERFORM FROM lobby_utils_refresh_member_authz(_id_lobby, true);
     END IF;
   END IF;
-
+  
   PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_viewer], _id_lobby);
 
   UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=__id_lobby;
@@ -196,10 +191,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_manage_joinrequest_accept(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
-  IF(_id_viewer=_id_target)
-    THEN RAISE EXCEPTION '_id_viewer == _id_target';
-  END IF;
-
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
 
@@ -217,10 +208,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_manage_joinrequest_deny(_id_viewer integer, _id_target integer, _id_lobby integer) RETURNS boolean AS $$
 BEGIN
-  IF(_id_viewer=_id_target)
-    THEN RAISE EXCEPTION '_id_viewer == _id_target';
-  END IF;
-
   PERFORM FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner IS TRUE FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
 
@@ -239,14 +226,8 @@ DECLARE
     __check_join boolean;
     __trust_invite boolean;
 BEGIN
-  IF(_id_viewer=_id_target)
-    THEN RAISE EXCEPTION '_id_viewer == _id_target';
-  END IF;
-  --perms
-  --user_user
   PERFORM FROM friends WHERE id_usera=least(_id_viewer, _id_target) AND id_userb=greatest(_id_viewer, _id_target) FOR KEY SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'not friends'; END IF;
-  --lobby_user
   SELECT check_join INTO __check_join FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
   SELECT (0 < authz OR __check_join IS FALSE) INTO __trust_invite FROM lobby_users WHERE fk_member=_id_viewer AND id_lobby=_id_lobby FOR SHARE;
@@ -258,15 +239,14 @@ BEGIN
            _id_lobby,
            CASE WHEN __trust_invite THEN 'INV_WAITING_USER'::lobby_active_joinrequest_status ELSE 'INV_WAITING_LOBBY'::lobby_active_joinrequest_status END)
     ON CONFLICT(id_user, id_lobby) DO UPDATE
-        SET joinrequest_status=
-          CASE WHEN lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER') THEN lobby_users.joinrequest_status
-            WHEN __trust_invite THEN
-              CASE lobby_users.joinrequest_status WHEN 'WAITING_LOBBY' THEN 'WAITING_USER'::lobby_active_joinrequest_status
-                ELSE 'INV_WAITING_USER'::lobby_active_joinrequest_status END
-            WHEN lobby_users.joinrequest_status IN('WAITING_LOBBY') THEN 'WAITING_LOBBY'::lobby_active_joinrequest_status
-            ELSE 'INV_WAITING_LOBBY'::lobby_active_joinrequest_status
-          END
-    WHERE lobby_users.fk_member IS NULL AND (lobby_users.ban_resolved_at < NOW() OR lobby_users.ban_resolved_at IS NULL);
+      SET joinrequest_status=
+        CASE WHEN lobby_users.joinrequest_status IN('INV_WAITING_USER', 'WAITING_USER') THEN lobby_users.joinrequest_status
+          WHEN __trust_invite THEN
+            CASE lobby_users.joinrequest_status WHEN 'WAITING_LOBBY' THEN 'WAITING_USER'::lobby_active_joinrequest_status
+              ELSE 'INV_WAITING_USER'::lobby_active_joinrequest_status END
+          WHEN lobby_users.joinrequest_status IN('WAITING_LOBBY') THEN 'WAITING_LOBBY'::lobby_active_joinrequest_status
+          ELSE 'INV_WAITING_LOBBY'::lobby_active_joinrequest_status
+        END;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby_user not found'; END IF;
 
   INSERT INTO lobby_invitations(id_target, id_lobby, id_creator) VALUES(_id_target, _id_lobby, _id_viewer);
@@ -276,23 +256,13 @@ END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_lobby integer, _id_target integer) RETURNS boolean AS $$
-/*
-DELETE lobby_invitations
--> invited*lobby_users.id_joinrequest_creator ON DELETE SET NULL
-	-> trigger after update update_id_joinrequest_creator
-		 if not found delete invited*lobby_users
-*/
 BEGIN
-  IF(_id_viewer=_id_target)
-    THEN RAISE EXCEPTION '_id_viewer == _id_target';
-  END IF;
-
-  PERFORM FROM lobby_users WHERE id_user=_id_target AND id_lobby=_id_lobby FOR UPDATE; --prevent insert or delete lobby_invitations
+  PERFORM FROM lobby_users WHERE id_user=_id_target AND id_lobby=_id_lobby AND joinrequest_status IS NOT NULL FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby_user not found'; END IF;
   DELETE FROM lobby_invitations WHERE id_creator=_id_viewer AND id_target=_id_target;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby_invit not found'; END IF;
 
-  PERFORM FROM lobby_invitations WHERE id_target=_id_target AND id_lobby=_id_lobby LIMIT 1 FOR KEY SHARE;
+  PERFORM FROM lobby_invitations WHERE id_target=_id_target AND id_lobby=_id_lobby LIMIT 1 FOR KEY SHARE; --skip locked?
   IF NOT FOUND THEN
     DELETE FROM lobby_users WHERE id_user=_id_target AND id_lobby=_id_lobby AND joinrequest_status IN('INV_WAITING_LOBBY', 'INV_WAITING_USER');
   END IF;
@@ -310,8 +280,8 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'update not needed'; END IF;
 
   IF _check_join IS FALSE THEN
-    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND joinrequest_status<>'INV_WAITING_USER' FOR UPDATE;
-
+    PERFORM FROM lobby_users WHERE id_lobby=_id_lobby AND joinrequest_status IS NOT NULL ORDER BY id_user FOR UPDATE; --issue #1 <>'INV_WAITING_USER'
+    
 	  UPDATE lobby_users SET joinrequest_status='INV_WAITING_USER'
 	    WHERE id_lobby=_id_lobby
 	      AND joinrequest_status<>'INV_WAITING_USER'
@@ -330,7 +300,7 @@ CREATE OR REPLACE FUNCTION lobby_set_privacy(_id_viewer integer, _id_lobby integ
 BEGIN
   UPDATE lobbys SET privacy=_privacy WHERE id_owner=_id_viewer AND id=_id_lobby AND privacy<>_privacy;
   IF NOT FOUND THEN RAISE EXCEPTION 'update failed'; END IF;
-
+	--refresh request eligibility if check_join is true
   RETURN true;
 END
 $$ LANGUAGE plpgsql;
@@ -344,7 +314,6 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found or no need to update'; END IF;
   
 	PERFORM FROM lobby_utils_refresh_member_authz(_id_lobby,false);
-  
   RETURN true;
 END
 $$ LANGUAGE plpgsql;
@@ -364,11 +333,11 @@ BEGIN
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
 	UPDATE lobby_users SET is_owner=false
-		WHERE fk_member=_id_viewer; --AND id_lobby=_id_lobby AND is_owner
+		WHERE fk_member=_id_viewer AND id_lobby=_id_lobby AND is_owner;
   IF NOT FOUND THEN RAISE EXCEPTION 'serialization error'; END IF;
 
 	UPDATE lobby_users SET is_owner=true, authz=1
-		WHERE fk_member=_id_target AND id_lobby=_id_lobby; --AND is_owner IS FALSE
+		WHERE fk_member=_id_target AND id_lobby=_id_lobby AND is_owner IS FALSE;
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_users target not found'; END IF;
 
   PERFORM FROM lobby_utils_refresh_member_authz(_id_lobby, true);
@@ -390,7 +359,7 @@ BEGIN
 
 	IF _ban_resolved_at IS NULL OR _ban_resolved_at < NOW() THEN --kick
 		DELETE FROM lobby_users
-			WHERE id_user=_id_target AND id_lobby=_id_lobby
+			WHERE id_user=_id_target AND id_lobby=_id_lobby AND is_owner IS FALSE
 			RETURNING fk_member IS NOT NULL INTO __was_member;
 	ELSE
 	  INSERT INTO lobby_users(id_user, id_lobby, ban_resolved_at)
@@ -399,12 +368,14 @@ BEGIN
                                 authz=null,
                                 joinrequest_status=null,
                                 ban_resolved_at=_ban_resolved_at
+	    WHERE is_owner IS FALSE
       RETURNING fk_member IS NOT NULL INTO __was_member;
 	END IF;
 	IF NOT FOUND THEN RAISE EXCEPTION 'ban failed'; END IF;
   
   IF __was_member THEN
     PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_target],_id_lobby);
+    UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=_id_lobby;
   END IF;
   
 	RETURN true;
@@ -416,25 +387,25 @@ DECLARE
   __change_slots integer;
   __ids_member integer[];
 BEGIN
-	PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR NO KEY UPDATE; --prevent join
+	PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR UPDATE; --prevent join
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
 	SELECT _max_slots-(max_slots-free_slots) INTO __change_slots
 		FROM lobby_slots
-		WHERE id_lobby=_id_lobby AND _max_slots<>max_slots FOR NO KEY UPDATE; --prevent left
+		WHERE id_lobby=_id_lobby AND _max_slots<>max_slots FOR UPDATE; --prevent left
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_slots not found'; END IF;
 
 	UPDATE lobby_slots SET max_slots=_max_slots,
 	                       free_slots=CASE WHEN __change_slots < 0 THEN 0 ELSE __change_slots END
 		WHERE id_lobby=_id_lobby AND max_slots<>_max_slots;
-
+	
 	IF __change_slots < 0 THEN
 	  WITH delete_members AS (
 			DELETE FROM lobby_users
 				WHERE fk_member IN(
 		      SELECT fk_member FROM lobby_users
 		        WHERE fk_member IS NOT NULL AND id_lobby=_id_lobby AND is_owner IS FALSE
-		        FOR UPDATE LIMIT -__change_slots)
+		        ORDER BY id_user FOR UPDATE LIMIT -__change_slots)
 	      RETURNING fk_member
 	  )
 	  SELECT array_agg(delete_members.fk_member) INTO __ids_member FROM delete_members;
@@ -460,7 +431,7 @@ DECLARE
   __check_join boolean;
   __ids_request integer[];
 BEGIN
-  SELECT ARRAY[authz_default, authz_follow, authz_friend], id_owner, check_join INTO __authz, __id_owner,__check_join FROM lobbys WHERE lobbys.id=_id_lobby FOR SHARE;
+  SELECT ARRAY[authz_default, authz_follow, authz_friend], id_owner, check_join INTO __authz, __id_owner,__check_join FROM lobbys WHERE lobbys.id=_id_lobby FOR UPDATE;
   IF __check_join IS FALSE THEN
 	  UPDATE lobby_users
 			SET authz =
@@ -484,21 +455,22 @@ BEGIN
         WHERE fk_member IS NOT NULL AND id_lobby=_id_lobby AND ((is_owner AND _refresh_owner) OR is_owner IS FALSE)
         RETURNING id_user, authz
     )
-    SELECT array_agg(t_target_users.id) INTO __ids_request
-			FROM (SELECT lobby_users.id_user AS id FROM (
-	      SELECT DISTINCT lobby_invitations.id_target AS id_target FROM (SELECT id_user FROM upd_members WHERE upd_members.authz > 0) t_creators
-	      JOIN lobby_invitations ON lobby_invitations.id_creator=t_creators.id_user AND lobby_invitations.id_lobby=_id_lobby
-	    ) t_targets
-	    JOIN lobby_users ON lobby_users.id_user=t_targets.id_target
-			WHERE lobby_users.joinrequest_status NOT IN('INV_WAITING_USER','WAITING_USER')
-      FOR UPDATE OF lobby_users) t_target_users;
+    SELECT array_agg(t_target_users.id) INTO __ids_request FROM (
+      SELECT lobby_users.id_user AS id
+        FROM (
+			    SELECT DISTINCT lobby_invitations.id_target AS id_target FROM (SELECT id_user FROM upd_members WHERE upd_members.authz > 0) t_creators
+	          JOIN lobby_invitations ON lobby_invitations.id_creator=t_creators.id_user AND lobby_invitations.id_lobby=_id_lobby
+	        ) t_targets
+	      JOIN lobby_users ON lobby_users.id_user=t_targets.id_target
+				WHERE lobby_users.joinrequest_status IS NOT NULL --NOT IN('INV_WAITING_USER', 'WAITING_USER') --issue #2
+        ORDER BY id_user FOR UPDATE OF lobby_users) t_target_users;
     
-    UPDATE lobby_users
+    UPDATE lobby_users --todo get id_actor
       SET joinrequest_status=
         CASE WHEN joinrequest_status='WAITING_LOBBY'
           THEN 'WAITING_USER'::lobby_active_joinrequest_status
           ELSE 'INV_WAITING_USER'::lobby_active_joinrequest_status END
-      WHERE id_user=ANY(__ids_request) AND id_lobby=_id_lobby;
+      WHERE id_user=ANY(__ids_request) AND id_lobby=_id_lobby AND joinrequest_status NOT IN('INV_WAITING_USER', 'WAITING_USER');
 	END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -507,11 +479,14 @@ CREATE OR REPLACE FUNCTION lobby_utils_delete_member_invitation(_ids_member inte
 DECLARE
   __ids_target integer[];
 BEGIN
+  --alias multiple lobby_invite_cancel
+  --[ids_member].lobby_users need UPDATE lock this prevent add of new invitations
+  
   PERFORM FROM lobby_users
-    WHERE joinrequest_status IN('INV_WAITING_USER', 'INV_WAITING_LOBBY')
+    WHERE joinrequest_status IS NOT NULL --NOT IN('WAITING_USER' 'WAITING_LOBBY') --issue #3
       AND id_lobby=_id_lobby
-      AND EXISTS(SELECT id_target FROM lobby_invitations WHERE id_creator=ANY(_ids_member) AND id_lobby=_id_lobby)
-      FOR UPDATE;
+      AND id_user IN(SELECT id_target FROM lobby_invitations WHERE id_creator=ANY(_ids_member) AND id_lobby=_id_lobby)
+      ORDER BY id_user FOR UPDATE OF lobby_users;
 
   WITH del_lobby_invitations AS (
     DELETE FROM lobby_invitations WHERE id_creator=ANY(_ids_member) AND id_lobby=_id_lobby RETURNING id_target
@@ -521,7 +496,7 @@ BEGIN
   DELETE FROM lobby_users
     WHERE id_user=ANY(__ids_target)
       AND id_lobby=_id_lobby
-      AND joinrequest_status IN('INV_WAITING_USER','INV_WAITING_LOBBY')
-      AND NOT EXISTS(SELECT FROM lobby_invitations WHERE id_target=lobby_users.id_user AND id_lobby=_id_lobby FOR KEY SHARE);
+      AND joinrequest_status NOT IN('WAITING_USER', 'WAITING_LOBBY')
+      AND NOT EXISTS(SELECT FROM lobby_invitations WHERE id_target=lobby_users.id_user AND id_lobby=_id_lobby FOR KEY SHARE);--SKIP LOCKED
 END;
 $$ LANGUAGE plpgsql;
