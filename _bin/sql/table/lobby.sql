@@ -22,10 +22,6 @@ CREATE TABLE lobbys(
   --AUTHZ
   -- b0 = trusted_invite
   id_owner integer REFERENCES users NOT NULL UNIQUE,
-  authz_default integer NOT NULL DEFAULT 1,
-  authz_follow integer NOT NULL DEFAULT 1,
-  authz_friend integer NOT NULL DEFAULT 1,
-  CHECK(0 <= authz_default AND authz_default <= authz_follow AND authz_follow <= authz_friend),
 
   /* CONFIG
   --o7
@@ -60,7 +56,7 @@ CREATE TABLE lobby_users(
   UNIQUE(id_lobby, fk_member),
   is_owner boolean,
   --default_perms integer,
-  authz integer,
+  --authz integer,
   --specific_authz integer,
   --joined_at timestamptz,
 
@@ -69,9 +65,9 @@ CREATE TABLE lobby_users(
   --ban
   ban_resolved_at timestamptz,
 
-  CHECK(((fk_member IS NOT NULL AND fk_member=id_user) AND is_owner IS NOT NULL AND authz IS NOT NULL AND ((authz=1 AND is_owner) OR is_owner IS FALSE)
+  CHECK(((fk_member IS NOT NULL AND fk_member=id_user AND is_owner IS NOT NULL)
            AND joinrequest_status IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL))
-      OR (fk_member IS NULL AND is_owner IS NULL AND authz IS NULL)),
+      OR (fk_member IS NULL AND is_owner IS NULL)),
   CHECK ((joinrequest_status IS NOT NULL AND (fk_member IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
       OR (joinrequest_status IS NULL)),
   CHECK((ban_resolved_at > NOW() AND joinrequest_status IS NULL AND fk_member IS NULL)
