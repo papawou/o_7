@@ -3,10 +3,9 @@ DROP TYPE IF EXISTS lobby_privacy, lobby_active_joinrequest_status CASCADE;
 /*
 code_auth: can_invite
 */
-CREATE TYPE lobby_privacy AS ENUM('PRIVATE','DEFAULT','FOLLOWER', 'FRIEND');
+CREATE TYPE lobby_privacy AS ENUM('PRIVATE','DEFAULT');
 CREATE TABLE lobbys(
   id bigserial PRIMARY KEY,
-
   --id_game integer REFERENCES games NOT NULL,
   --id_platform integer REFERENCES platforms NOT NULL,
   --id_cross integer DEFAULT NULL,
@@ -65,13 +64,16 @@ CREATE TABLE lobby_users(
   --ban
   ban_resolved_at timestamptz,
 
-  CHECK(((fk_member IS NOT NULL AND fk_member=id_user AND is_owner IS NOT NULL)
+  CHECK(((fk_member=id_user AND is_owner IS NOT NULL)
            AND joinrequest_status IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL))
       OR (fk_member IS NULL AND is_owner IS NULL)),
+
   CHECK ((joinrequest_status IS NOT NULL AND (fk_member IS NULL AND (ban_resolved_at < NOW() OR ban_resolved_at IS NULL)))
       OR (joinrequest_status IS NULL)),
+
   CHECK((ban_resolved_at > NOW() AND joinrequest_status IS NULL AND fk_member IS NULL)
       OR(ban_resolved_at < NOW() OR ban_resolved_at IS NULL)),
+
   CHECK(ban_resolved_at IS NOT NULL OR fk_member IS NOT NULL OR joinrequest_status IS NOT NULL)
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE;
