@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_requests, lobby_invitations, lobby_invitations CASCADE;
+DROP TABLE IF EXISTS lobbys, lobby_slots, lobby_members, lobby_requests, lobby_invitations, lobby_bans CASCADE;
 DROP TYPE IF EXISTS lobby_privacy, lobby_request_status CASCADE;
 /*
 code_auth: can_invite
@@ -33,23 +33,26 @@ ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFER
 
 CREATE TYPE lobby_request_status AS ENUM('WAITING_USER', 'WAITING_LOBBY');
 CREATE TABLE lobby_requests(
+  id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   id_user integer REFERENCES users NOT NULL,
-  id_lobby integer REFERENCES lobbys NOT NULL,
   PRIMARY KEY(id_lobby, id_user),
 
   status lobby_request_status,
   created_at timestamptz NOT NULL DEFAULT NOW(),
 
-  id_creator integer REFERENCES users, --means invit not request
+  id_creator integer REFERENCES users DEFAULT NULL, --IS NULL ? is_request : is_invitation
   CHECK(id_creator<>id_user OR id_creator IS NULL)
 );
 
 CREATE TABLE lobby_invitations(
+  id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
+
   id_creator integer REFERENCES users,
   id_target integer REFERENCES users,
-  id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   PRIMARY KEY(id_creator, id_target),
   CHECK(id_creator<>id_target),
+
+	--FOREIGN KEY(id_creator, id_target) REFERENCES friends, tothing how enforcre friends duplicate records, one table manage all
   FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE,
   FOREIGN KEY(id_lobby, id_target) REFERENCES lobby_requests(id_lobby, id_user) ON DELETE CASCADE
 );
