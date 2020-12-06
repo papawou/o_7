@@ -29,18 +29,15 @@ CREATE TYPE action_notification AS ENUM ('NEW_INVITE');
 CREATE TABLE lobby_notifications(
   id_consumer integer REFERENCES users NOT NULL,
   seen boolean NOT NULL DEFAULT FALSE,
-  
-  /*
-  to lobby_invitation or lobby_users ?
-  */
+
   --source_type action_notification,
-  source_id integer NOT NULL, --as node id --LobbyUser__id_lobby-_id_viewer
+  source_id integer NOT NULL, --as node id --LobbyRequest:id_lobby:id_user
   id_lobby integer NOT NULL,
-  
-  action action_notification NOT NULL,
-  
+
+  --action action_notification NOT NULL,
+
   id_actor integer NOT NULL REFERENCES users, --[]
-  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
 /*

@@ -22,13 +22,6 @@ REQUEST
 	lobby_manage_request_accept
 	lobby_manage_request_deny/cancel
 
-INVITATION
-__def__
-INV_WAITING_USER
-	//prevent delete of invitations if lobby update privacy
-INV_WAITING_LOBBY
-	//hidden from user until lobby response
-
 --member
 	lobby_invite_create
 	lobby_invite_cancel
@@ -85,11 +78,15 @@ RETURN
 */
 DECLARE
   __lobby_params record;
-  __request_valid boolean;
+  __request_valid boolean DEFAULT FALSE;
   __full_lobby boolean;
 BEGIN
   SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+
+  PERFORM pg_advisory_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner)||'_'||greatest(_id_viewer, __lobby_params.id_owner)::text, least(_id_viewer, __lobby_params.id_owner)));
+  PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
+  IF FOUND THEN RAISE EXCEPTION 'users_block'; END IF;
 
   PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_viewer::text, _id_lobby));
 	PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
@@ -218,6 +215,7 @@ BEGIN
       AND lobby_requests.status<>'WAITING_USER';
 
   INSERT INTO lobby_invitations(id_creator, id_target, id_lobby) VALUES(_id_viewer, _id_target, _id_lobby);
+
   RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
@@ -241,9 +239,10 @@ BEGIN
   UPDATE lobby_requests SET id_creator=t_lobby_invit.id_creator
     FROM (SELECT id_target, id_lobby, id_creator FROM lobby_invitations WHERE id_lobby=_id_lobby AND id_target=_id_target LIMIT 1 FOR KEY SHARE SKIP LOCKED) t_lobby_invit
     WHERE lobby_requests.id_user=t_lobby_invit.id_target AND lobby_requests.id_lobby=t_lobby_invit.id_lobby;
-  IF FOUND THEN RETURN true; END IF;
+  IF NOT FOUND THEN
+    DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=_id_target AND id_creator=_id_viewer;
+  END IF;
 
-  DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=_id_target AND id_creator=_id_viewer;
   RETURN true;
 END
 $$ LANGUAGE plpgsql;
@@ -287,6 +286,8 @@ BEGIN
 
 	  DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_creator IS NULL;
   END IF;
+
+  RETURN true;
 END
 $$ LANGUAGE plpgsql;
 
@@ -313,7 +314,7 @@ BEGIN
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_member target not found'; END IF;
 
   UPDATE lobby_requests SET status='WAITING_USER'
-    WHERE id_user IN(SELECT id_target FROM lobby_invitations WHERE id_creator=_id_target FOR KEY SHARE) AND id_lobby=_id_lobby
+    WHERE id_user IN(SELECT id_target FROM lobby_invitations WHERE id_creator=_id_target FOR KEY SHARE SKIP LOCKED) AND id_lobby=_id_lobby
       AND status='WAITING_LOBBY';
 
   RETURN true;
@@ -322,7 +323,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_ban_user(_id_viewer integer, _id_target integer, _id_lobby integer, _ban_resolved_at timestamptz) RETURNS boolean AS $$
 DECLARE
-  __was_member boolean;
+  __was_member boolean DEFAULT FALSE;
 BEGIN
   SET CONSTRAINTS fk_lobby_request_creator DEFERRED;
   IF _id_viewer=_id_target THEN RAISE EXCEPTION '_id_viewer=_id_target'; END IF;
@@ -333,7 +334,7 @@ BEGIN
   PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_target::text, _id_lobby));
 
 	DELETE FROM lobby_requests WHERE id_user=_id_target AND id_lobby=_id_lobby;
-  DELETE FROM lobby_members WHERE id_user=_id_target AND id_lobby=_id_lobby RETURNING FOUND INTO __was_member;
+  DELETE FROM lobby_members WHERE id_user=_id_target AND id_lobby=_id_lobby RETURNING id_user IS NOT NULL INTO __was_member;
 	IF _ban_resolved_at > NOW() THEN
 	  INSERT INTO lobby_bans(id_user, id_lobby, ban_resolved_at) VALUES(_id_target, _id_lobby, _ban_resolved_at);
   END IF;
@@ -360,7 +361,7 @@ BEGIN
 	SELECT _max_slots-(max_slots-free_slots) INTO __change_slots
 		FROM lobby_slots
 		WHERE id_lobby=_id_lobby AND _max_slots<>max_slots FOR NO KEY UPDATE; --prevent left
-	IF NOT FOUND THEN RAISE EXCEPTION 'serialization error, lobby_slots not found'; END IF;
+	IF NOT FOUND THEN RAISE EXCEPTION 'serialization error'; END IF;
 
 	UPDATE lobby_slots SET max_slots=_max_slots,
 	                       free_slots=CASE WHEN __change_slots < 0 THEN 0 ELSE __change_slots END
@@ -391,7 +392,7 @@ DECLARE
   __ids_target integer[];
 BEGIN
   --alias multiple lobby_invite_cancel
-  --[_ids_creator].lobby_users FOR UPDATE - this prevent add of new invitations in name of creator
+  --[_ids_creator].lobby_users FOR UPDATE
 	SET CONSTRAINTS fk_lobby_request_creator DEFERRED;
 
   WITH dli AS (
@@ -415,5 +416,31 @@ BEGIN
 		WHERE id_lobby=_id_lobby AND id_user=li_new_creator.id_target;
 
   DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=ANY(__ids_target) AND id_creator=ANY(_ids_creator);
+END;
+$$ LANGUAGE plpgsql;
+
+DROP FUNCTION IF EXISTS test_lobby_utils_delete_member_invitation CASCADE;
+CREATE OR REPLACE FUNCTION test_lobby_utils_delete_member_invitation(_ids_creator integer[], _id_lobby integer) RETURNS void AS $$
+DECLARE
+  __rec record;
+BEGIN
+  --[_ids_creator].lobby_users FOR UPDATE
+	SET CONSTRAINTS fk_lobby_request_creator DEFERRED;
+
+  FOR __rec IN
+    DELETE FROM lobby_invitations WHERE id_lobby=_id_lobby AND id_creator=ANY(_ids_creator)
+      RETURNING id_target, id_creator
+  LOOP
+		PERFORM FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__rec.id_target AND id_creator=__rec.id_creator FOR UPDATE;
+		IF FOUND THEN
+			UPDATE lobby_requests SET id_creator=t_inv_new_creator.id_creator
+				FROM (SELECT id_creator FROM lobby_invitations WHERE id_lobby=_id_lobby AND id_target=__rec.id_target AND id_creator NOT IN(_ids_creator) LIMIT 1 FOR KEY SHARE SKIP LOCKED) t_inv_new_creator
+				WHERE id_lobby=_id_lobby AND id_user=__rec.id_target
+				  AND t_inv_new_creator.id_creator IS NOT NULL;
+			IF NOT FOUND THEN
+				DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__rec.id_target;
+			END IF;
+		END IF;
+	END LOOP;
 END;
 $$ LANGUAGE plpgsql;

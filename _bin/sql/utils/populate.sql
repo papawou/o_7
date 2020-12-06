@@ -5,7 +5,8 @@ INSERT INTO platforms(name) VALUES ('ps4'),
 INSERT INTO game_platform(id_game, id_platform, id_cross) VALUES (1,1,1),(1,2,1),(1,3,1),
                                                                   (2,1,null),(2,2,null),
                                                                   (3,1,null),(3,2,1),(3,3,1);
-INSERT INTO users(name, password) VALUES('papawa', 'test'),('test','test'),('zboub','test'),('testo', 'test');
+INSERT INTO users(name, password) VALUES('papawa', 'test'),('test','test'),('zboub','test'),('testo', 'test'),
+                                         ('azer','azer'),('azzeaz','qazzeaz'),('aezadaz','dqadasad'),('dasadaa','qsdqdzqdzq');
 
 INSERT INTO follows
     (id_follower, id_following)
