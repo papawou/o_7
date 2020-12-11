@@ -31,19 +31,19 @@ CREATE TABLE lobby_members(
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
 
-CREATE TYPE lobby_request_status AS ENUM('WAITING_USER', 'WAITING_LOBBY');
 CREATE TABLE lobby_requests(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   id_user integer REFERENCES users,
   PRIMARY KEY(id_lobby, id_user),
 
-  status lobby_request_status NOT NULL,
+  need_validation boolean NOT NULL DEFAULT FALSE,
   created_at timestamptz NOT NULL DEFAULT NOW(),
 
   id_creator integer REFERENCES users DEFAULT NULL, --IS NULL ? is_request : is_invitation
   -- fk_lobby_request_creator (id_lobby, id_user, id_creator) REFERENCES lobby_invitations
   CHECK(id_user IS DISTINCT FROM id_creator)
 );
+CREATE UNIQUE INDEX idx_unique_user_request ON lobby_requests(id_user) WHERE id_creator IS NOT NULL;
 
 CREATE TABLE lobby_invitations(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,

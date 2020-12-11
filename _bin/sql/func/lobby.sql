@@ -94,7 +94,7 @@ BEGIN
   PERFORM FROM lobby_members WHERE id_lobby=_id_lobby AND id_user=_id_viewer;
   IF FOUND THEN RAISE EXCEPTION 'already member'; END IF;
 
-  SELECT status='WAITING_USER' INTO __request_valid FROM lobby_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby FOR UPDATE;
+  SELECT need_validation IS FALSE INTO __request_valid FROM lobby_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby FOR UPDATE;
   IF __request_valid OR (__lobby_params.check_join IS FALSE AND __lobby_params.privacy='DEFAULT') THEN --can_join the lobby
 	  SELECT free_slots-1<0 INTO __full_lobby FROM lobby_slots WHERE id_lobby=_id_lobby FOR NO KEY UPDATE;
 	  IF __full_lobby AND __lobby_params.check_join AND __lobby_params.privacy='DEFAULT' THEN --lobby_full, convert invit to request
@@ -109,7 +109,7 @@ BEGIN
 			RETURN 1;
 		END IF;
   ELSIF __lobby_params.check_join AND __lobby_params.privacy='DEFAULT' THEN
-    INSERT INTO lobby_requests(id_user, id_lobby, status) VALUES(_id_viewer, _id_lobby, 'WAITING_LOBBY')
+    INSERT INTO lobby_requests(id_user, id_lobby, need_validation) VALUES(_id_viewer, _id_lobby, true)
   	  ON CONFLICT (id_user, id_lobby)
   	    DO UPDATE SET id_creator=null
   		  WHERE lobby_requests.id_creator IS NOT NULL;
@@ -135,7 +135,6 @@ BEGIN
 	IF NOT FOUND THEN RAISE EXCEPTION 'not lobby member'; END IF;
 
   PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_viewer], __id_lobby);
-	--todo idea allow concurrent leave? use of lobby_slots, skip locked for invitation deleted
   IF __was_owner THEN
     SELECT id_user INTO __new_owner FROM lobby_members WHERE id_lobby=__id_lobby LIMIT 1 FOR NO KEY UPDATE;
     IF NOT FOUND THEN --last lobby_member
@@ -155,7 +154,7 @@ CREATE OR REPLACE FUNCTION lobby_user_request_deny(_id_viewer integer, _id_lobby
 BEGIN
   DELETE FROM lobby_requests
     WHERE id_lobby=_id_lobby AND id_user=_id_viewer
-      AND (id_creator IS NOT NULL AND status='WAITING_LOBBY') IS FALSE; --prevent delete of INV_WAITING_LOBBY
+      AND (id_creator IS NOT NULL AND need_validation) IS FALSE; --prevent delete of INV_WAITING_LOBBY
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby_request not found'; END IF;
 
   RETURN true;
@@ -167,8 +166,8 @@ BEGIN
   PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'unauth'; END IF;
 
-  UPDATE lobby_requests SET status='WAITING_USER'
-    WHERE id_lobby=_id_lobby AND id_user=_id_target AND status='WAITING_LOBBY';
+  UPDATE lobby_requests SET need_validation=false
+    WHERE id_lobby=_id_lobby AND id_user=_id_target AND need_validation;
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_request not found'; END IF;
 
   RETURN true;
@@ -207,12 +206,12 @@ BEGIN
   SELECT (check_join IS FALSE OR id_owner=_id_viewer) INTO __trust_invite FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
-  INSERT INTO lobby_requests(id_user, id_lobby, status, id_creator)
-    VALUES(_id_target, _id_lobby, CASE WHEN __trust_invite THEN 'WAITING_USER'::lobby_request_status ELSE 'WAITING_LOBBY'::lobby_request_status END, _id_viewer)
+  INSERT INTO lobby_requests(id_user, id_lobby, need_validation, id_creator)
+    VALUES(_id_target, _id_lobby, __trust_invite IS FALSE, _id_viewer)
     ON CONFLICT(id_lobby, id_user) DO UPDATE
-      SET status='WAITING_USER'::lobby_request_status
+      SET need_validation=false
     WHERE __trust_invite
-      AND lobby_requests.status<>'WAITING_USER';
+      AND need_validation;
 
   INSERT INTO lobby_invitations(id_creator, id_target, id_lobby) VALUES(_id_viewer, _id_target, _id_lobby);
 
@@ -264,8 +263,8 @@ BEGIN
 
     DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_creator IS NULL;
 
-	  UPDATE lobby_requests SET status='WAITING_USER'
-      WHERE id_lobby=_id_lobby AND status<>'WAITING_USER';
+	  UPDATE lobby_requests SET need_validation=false
+      WHERE id_lobby=_id_lobby AND need_validation;
   END IF;
 
   RETURN true;
@@ -313,9 +312,9 @@ BEGIN
 		WHERE id_user=_id_target AND id_lobby=_id_lobby AND is_owner IS FALSE;
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_member target not found'; END IF;
 
-  UPDATE lobby_requests SET status='WAITING_USER'
+  UPDATE lobby_requests SET need_validation=false
     WHERE id_user IN(SELECT id_target FROM lobby_invitations WHERE id_creator=_id_target FOR KEY SHARE SKIP LOCKED) AND id_lobby=_id_lobby
-      AND status='WAITING_LOBBY';
+      AND need_validation;
 
   RETURN true;
 END
