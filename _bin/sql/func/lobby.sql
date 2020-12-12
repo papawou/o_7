@@ -97,8 +97,6 @@ BEGIN
   PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
   IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
 
-  --PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_viewer::text, _id_lobby));
-
   SELECT need_validation IS FALSE INTO __request_valid FROM lobby_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby FOR UPDATE;
   IF __request_valid OR (__lobby_params.check_join IS FALSE AND __lobby_params.privacy='DEFAULT') THEN --can_join the lobby
 	  SELECT free_slots-1<0 INTO __full_lobby FROM lobby_slots WHERE id_lobby=_id_lobby FOR NO KEY UPDATE;
