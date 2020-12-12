@@ -84,15 +84,20 @@ BEGIN
   SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
+  --user_user relation
   PERFORM pg_advisory_lock_shared(hashtextextended('user_user:'||least(_id_viewer, __lobby_params.id_owner)||'_'||greatest(_id_viewer, __lobby_params.id_owner)::text, least(_id_viewer, __lobby_params.id_owner)));
   PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
   IF FOUND THEN RAISE EXCEPTION 'users_block'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_viewer::text, _id_lobby));
-	PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
+  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_viewer::text, _id_viewer));
+	PERFORM FROM lobby_requests WHERE id_user=_id_viewer AND id_creator IS NULL AND id_lobby<>_id_lobby;
+  IF FOUND THEN RAISE EXCEPTION 'already lobby request'; END IF;
+  PERFORM FROM lobby_members WHERE id_user=_id_viewer;
+  IF FOUND THEN RAISE EXCEPTION 'already lobby member'; END IF;
+  PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
   IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
-  PERFORM FROM lobby_members WHERE id_lobby=_id_lobby AND id_user=_id_viewer;
-  IF FOUND THEN RAISE EXCEPTION 'already member'; END IF;
+
+  --PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_viewer::text, _id_lobby));
 
   SELECT need_validation IS FALSE INTO __request_valid FROM lobby_requests WHERE id_user=_id_viewer AND id_lobby=_id_lobby FOR UPDATE;
   IF __request_valid OR (__lobby_params.check_join IS FALSE AND __lobby_params.privacy='DEFAULT') THEN --can_join the lobby
@@ -197,7 +202,8 @@ BEGIN
   PERFORM FROM friends WHERE id_usera=least(_id_viewer, _id_target) AND id_userb=greatest(_id_viewer, _id_target) FOR KEY SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'not friends'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_target::text, _id_lobby));
+
+  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_target::text, _id_target));
 	PERFORM FROM lobby_bans WHERE id_user=_id_target AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
   IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
   PERFORM FROM lobby_members WHERE id_lobby=_id_lobby AND id_user=_id_target;
@@ -330,8 +336,7 @@ BEGIN
   PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR SHARE;
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_user unauthz'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby_user:'||_id_lobby||'_'||_id_target::text, _id_lobby));
-
+  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_target::text, _id_target));
 	DELETE FROM lobby_requests WHERE id_user=_id_target AND id_lobby=_id_lobby;
   DELETE FROM lobby_members WHERE id_user=_id_target AND id_lobby=_id_lobby RETURNING id_user IS NOT NULL INTO __was_member;
 	IF _ban_resolved_at > NOW() THEN
