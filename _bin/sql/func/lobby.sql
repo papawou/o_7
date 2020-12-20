@@ -89,7 +89,7 @@ BEGIN
   PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
   IF FOUND THEN RAISE EXCEPTION 'users_block'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_viewer::text, _id_viewer));
+  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_viewer::text, _id_viewer));
 	PERFORM FROM lobby_requests WHERE id_user=_id_viewer AND id_creator IS NULL AND id_lobby<>_id_lobby;
   IF FOUND THEN RAISE EXCEPTION 'already lobby request'; END IF;
   PERFORM FROM lobby_members WHERE id_user=_id_viewer;
@@ -201,7 +201,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'not friends'; END IF;
 
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_target::text, _id_target));
+  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_target::text, _id_target));
 	PERFORM FROM lobby_bans WHERE id_user=_id_target AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
   IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
   PERFORM FROM lobby_members WHERE id_lobby=_id_lobby AND id_user=_id_target;
@@ -334,7 +334,7 @@ BEGIN
   PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR SHARE;
 	IF NOT FOUND THEN RAISE EXCEPTION 'lobby_user unauthz'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby:'||_id_target::text, _id_target));
+  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_target::text, _id_target));
 	DELETE FROM lobby_requests WHERE id_user=_id_target AND id_lobby=_id_lobby;
   DELETE FROM lobby_members WHERE id_user=_id_target AND id_lobby=_id_lobby RETURNING id_user IS NOT NULL INTO __was_member;
 	IF _ban_resolved_at > NOW() THEN
@@ -444,5 +444,37 @@ BEGIN
 			END IF;
 		END IF;
 	END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+/*
+SQUAD
+
+join_lobby
+leave_lobby
+*/
+CREATE OR REPLACE FUNCTION lobby_squad_join(_id_viewer integer, _id_squad integer, _id_lobby integer) RETURNS boolean AS $$
+DECLARE
+  __lobby_params record;
+  __squad_member record;
+
+  __squad_size integer;
+BEGIN
+	SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+
+	UPDATE squads SET joinable=false WHERE id=_id_squad AND id_owner=_id_viewer AND joinable RETURNING max_slots-free_slots INTO __squad_size;
+	IF NOT FOUND THEN RAISE EXCEPTION 'squad already request/lobby'; END IF;
+
+	FOR __squad_member IN SELECT fk_member FROM squad_users WHERE id_squad=_id_squad ORDER BY fk_member FOR KEY SHARE
+	LOOP
+	  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_viewer::text, _id_viewer));
+		PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
+    IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
+
+		DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__squad_member.fk_member;
+	  INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, __squad_member.fk_member);
+	END LOOP;
+	UPDATE lobby_slots SET free_slots=free_slots-__squad_size WHERE id_lobby=_id_lobby;
 END;
 $$ LANGUAGE plpgsql;

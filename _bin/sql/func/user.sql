@@ -97,7 +97,7 @@ BEGIN
   FOR __lobby IN
     SELECT id, id_owner, CASE WHEN id_owner=_id_viewer THEN _id_target ELSE _id_viewer END AS id_target FROM lobbys WHERE id_owner IN(_id_viewer, _id_target) ORDER BY id FOR SHARE
   LOOP
-    PERFORM pg_advisory_lock_shared(hashtextextended('lobby'||__lobby.id_target::text, __lobby.id_target));
+    PERFORM pg_advisory_lock_shared(hashtextextended('lobby_squad'||__lobby.id_target::text, __lobby.id_target));
 	  DELETE FROM lobby_requests WHERE id_lobby=__lobby.id AND id_user=__lobby.id_target;
 	  DELETE FROM lobby_bans WHERE id_lobby=__lobby.id AND id_user=__lobby.id_target;
 	  DELETE FROM lobby_members WHERE id_lobby=__lobby.id AND id_user=__lobby.id_target;

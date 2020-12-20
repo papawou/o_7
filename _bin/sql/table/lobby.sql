@@ -9,7 +9,7 @@ CREATE TABLE lobbys(
   check_join boolean NOT NULL DEFAULT FALSE,
   privacy lobby_privacy NOT NULL DEFAULT 'DEFAULT'::lobby_privacy,
 
-  id_owner integer REFERENCES users NOT NULL UNIQUE,
+  id_owner integer REFERENCES users NOT NULL,
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
@@ -30,7 +30,8 @@ CREATE TABLE lobby_members(
   joined_at timestamptz NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX idx_unique_lobby_owner ON lobby_members(id_lobby) WHERE is_owner IS TRUE;
-ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
+ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner
+  FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
 
 CREATE TABLE lobby_requests(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
