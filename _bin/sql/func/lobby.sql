@@ -90,6 +90,8 @@ BEGIN
   IF FOUND THEN RAISE EXCEPTION 'users_block'; END IF;
 
   PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_viewer::text, _id_viewer));
+  PERFORM FROM squad_users WHERE fk_member=_id_viewer;
+  IF FOUND THEN RAISE EXCEPTION 'in a squad'; END IF;
 	PERFORM FROM lobby_requests WHERE id_user=_id_viewer AND id_creator IS NULL AND id_lobby<>_id_lobby;
   IF FOUND THEN RAISE EXCEPTION 'already lobby request'; END IF;
   PERFORM FROM lobby_members WHERE id_user=_id_viewer;
@@ -450,31 +452,77 @@ $$ LANGUAGE plpgsql;
 /*
 SQUAD
 
-join_lobby
-leave_lobby
+lobby_squad_join
+
+--request
+lobby_manage_squad_request_accept
+
+--utils
+utils_lobby_squad_join
 */
+DROP FUNCTION IF EXISTS lobby_squad_join, lobby_manage_squad_request_accept, utils_lobby_squad_join CASCADE;
+
 CREATE OR REPLACE FUNCTION lobby_squad_join(_id_viewer integer, _id_squad integer, _id_lobby integer) RETURNS boolean AS $$
 DECLARE
   __lobby_params record;
-  __squad_member record;
-
   __squad_size integer;
 BEGIN
 	SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
-	UPDATE squads SET joinable=false WHERE id=_id_squad AND id_owner=_id_viewer AND joinable RETURNING max_slots-free_slots INTO __squad_size;
-	IF NOT FOUND THEN RAISE EXCEPTION 'squad already request/lobby'; END IF;
+	UPDATE squads SET id_lobby=_id_lobby, waiting_approval=CASE WHEN __lobby_params.check_join THEN true END
+		WHERE id=_id_squad AND id_owner=_id_viewer AND id_lobby IS NULL
+		RETURNING max_slots-free_slots INTO __squad_size;
+	IF NOT FOUND THEN RAISE EXCEPTION 'squad not found'; END IF;
+
+	IF __lobby_params.check_join THEN
+		RETURN;
+	ELSE
+	  UPDATE lobby_slots SET free_slots=free_slots-__squad_size WHERE id_lobby=_id_lobby AND free_slots-__squad_size>=0;
+	  IF NOT FOUND THEN RAISE EXCEPTION 'lobby full'; END IF;
+	  PERFORM utils_lobby_squad_join(_id_squad, _id_lobby);
+	END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+--todo leave current or defined lobby
+CREATE OR REPLACE FUNCTION lobby_squad_leave(_id_squad integer, _id_lobby integer, _id_viewer integer) RETURNS boolean AS $$
+DECLARE
+  __squad_member record;
+BEGIN
+	UPDATE squads SET id_lobby=null WHERE id=_id_squad AND id_lobby=_id_lobby AND waiting_approval IS NULL;
 
 	FOR __squad_member IN SELECT fk_member FROM squad_users WHERE id_squad=_id_squad ORDER BY fk_member FOR KEY SHARE
-	LOOP
-	  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_viewer::text, _id_viewer));
-		PERFORM FROM lobby_bans WHERE id_user=_id_viewer AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
-    IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
+		LOOP
+	    SELECT pg_advisory_lock(hashtext('lobby_squad:'||__squad_member.fk_member));
 
-		DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__squad_member.fk_member;
-	  INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, __squad_member.fk_member);
 	END LOOP;
-	UPDATE lobby_slots SET free_slots=free_slots-__squad_size WHERE id_lobby=_id_lobby;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION lobby_manage_squad_request_accept(_id_squad integer, _id_lobby integer, _id_viewer integer) RETURNS boolean AS $$
+DECLARE
+  __squad_size integer;
+BEGIN
+  PERFORM FROM lobbys WHERE id=_id_lobby AND id_owner=_id_viewer FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+	UPDATE squads SET waiting_approval=null WHERE id=_id_squad AND id_lobby=_id_lobby AND waiting_approval RETURNING max_slots-free_slots INTO __squad_size;
+  IF NOT FOUND THEN RAISE EXCEPTION 'squad not found'; END IF;
+  UPDATE lobby_slots SET free_slots=free_slots-__squad_size WHERE id_lobby=_id_lobby AND free_slots-__squad_size>=0;
+	IF NOT FOUND THEN RAISE EXCEPTION 'lobby full'; END IF;
+
+  PERFORM utils_lobby_squad_join(_id_squad, _id_lobby);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION utils_lobby_squad_join(_id_squad integer, _id_lobby integer) RETURNS void AS $$
+DECLARE
+  __squad_member record;
+BEGIN
+	FOR __squad_member IN SELECT fk_member FROM squad_users WHERE id_squad=_id_squad ORDER BY fk_member FOR KEY SHARE
+		LOOP
+	    PERFORM lobby_leave(__squad_member.fk_member, _id_lobby);
+	END LOOP;
+	RETURN;
 END;
 $$ LANGUAGE plpgsql;

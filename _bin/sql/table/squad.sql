@@ -5,12 +5,14 @@ CREATE TABLE squads(
   private boolean NOT NULL DEFAULT false,
   id_owner integer REFERENCES users NOT NULL UNIQUE,
 
-  joinable boolean NOT NULL DEFAULT true,
-
   free_slots integer NOT NULL DEFAULT 1,
   max_slots integer NOT NULL DEFAULT 2,
   CHECK(0 <= free_slots AND 1 < max_slots AND free_slots < max_slots),
-  CHECK(max_slots-free_slots > 1)
+  CHECK(max_slots-free_slots > 1),
+
+  id_lobby integer REFERENCES lobbys,
+  waiting_approval boolean, CHECK(waiting_approval OR waiting_approval IS NULL),
+  CHECK((id_lobby IS NULL AND waiting_approval IS NULL) OR id_lobby IS NOT NULL)
 );
 
 CREATE TABLE squad_users(

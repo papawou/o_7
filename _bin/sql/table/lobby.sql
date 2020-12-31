@@ -38,7 +38,7 @@ CREATE TABLE lobby_requests(
   id_user integer REFERENCES users,
   PRIMARY KEY(id_lobby, id_user),
 
-  need_validation boolean NOT NULL DEFAULT FALSE,
+  waiting_approval boolean NOT NULL DEFAULT FALSE,
   created_at timestamptz NOT NULL DEFAULT NOW(),
 
   id_creator integer REFERENCES users DEFAULT NULL, --IS NULL ? is_request : is_invitation

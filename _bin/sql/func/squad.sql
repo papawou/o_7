@@ -5,14 +5,12 @@ DROP FUNCTION IF EXISTS squad_create, squad_join, squad_leave,
 
 CREATE OR REPLACE FUNCTION squad_create(_id_viewer integer, _private boolean, _max_slots integer, OUT id_squad_ integer) AS $$
 BEGIN
-  SET CONSTRAINTS fk_squad_owner, fk_squad_slots DEFERRED;
+  SET CONSTRAINTS fk_squad_owner DEFERRED;
 
   INSERT INTO squads
-    (id_owner, private)
-    VALUES(_id_viewer, _private)
+    (id_owner, private, free_slots, max_slots)
+    VALUES(_id_viewer, _private, _max_slots-1, _max_slots)
     RETURNING id INTO id_squad_;
-	INSERT INTO squad_slots(id_squad, free_slots, max_slots)
-		VALUES(id_squad_, _max_slots-1, _max_slots);
 
   INSERT INTO squad_users
     (id_squad, id_user, fk_member)
@@ -25,7 +23,7 @@ DECLARE
   __private boolean;
   __id_owner integer;
 BEGIN
-  UPDATE squads SET free_slots=free_slots-1 FROM squads WHERE id=_id_squad RETURNING private, id_owner INTO __private, __id_owner;
+  UPDATE squads SET free_slots=free_slots-1 FROM squads WHERE id=_id_squad AND waiting_approval IS NULL RETURNING private, id_owner INTO __private, __id_owner;
 
   PERFORM pg_advisory_lock(hashtextextended('user_user:'||least(_id_viewer, __id_owner)||'_'||greatest(_id_viewer, __id_owner)::text, least(_id_viewer, __id_owner)));
   PERFORM FROM friends WHERE id_usera=least(_id_viewer, __id_owner) AND id_userb=greatest(_id_viewer, __id_owner) FOR KEY SHARE;
