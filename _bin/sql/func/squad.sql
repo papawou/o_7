@@ -194,7 +194,7 @@ BEGIN
 
   RETURN true;
 END
-$$ LANGUAGE plpgsql;+
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION squad_ban_user(_id_viewer integer, _id_target integer, _id_squad integer, _block boolean) RETURNS boolean AS $$
 DECLARE
@@ -220,7 +220,7 @@ BEGIN
   IF __was_member THEN
     IF __delete_squad THEN
       DELETE FROM squads WHERE id=_id_squad;
-	  ELSE
+		ELSE
       PERFORM FROM squad_utils_delete_member_invitation(ARRAY[_id_target],_id_squad);
       UPDATE squads SET free_slots=free_slots+1 WHERE id=_id_squad;
     END IF;
