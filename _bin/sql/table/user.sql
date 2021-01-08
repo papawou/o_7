@@ -48,3 +48,26 @@ CREATE TABLE user_bans(
   CHECK(created_by IN(id_usera, id_userb)),
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE users_lobby_squad(
+  id_user integer REFERENCES users PRIMARY KEY,
+
+  --lobby
+  fk_lobby_member integer REFERENCES lobbys,
+  UNIQUE(id_user, fk_lobby_member),
+  FOREIGN KEY(fk_lobby_member, id_user) REFERENCES lobby_users(id_lobby, fk_member),
+  fk_lobby_request integer REFERENCES lobbys,
+  UNIQUE(id_user, fk_lobby_request),
+  FOREIGN KEY(fk_lobby_request, id_user) REFERENCES lobby_users(id_lobby, fk_request),
+	CHECK(fk_lobby_member IS NOT NULL::integer + fk_lobby_request IS NOT NULL::integer <=1),
+
+  --squad
+  fk_squad_member integer REFERENCES squads,
+  UNIQUE(id_user, fk_squad_member),
+  FOREIGN KEY(fk_squad_member, id_user) REFERENCES squad_users(id_squad, fk_member),
+  fk_squad_lobby integer REFERENCES lobbys,
+  FOREIGN KEY(fk_squad_member, fk_squad_lobby) REFERENCES squads(id, fk_lobby_member) MATCH FULL,
+
+  CHECK((fk_squad_member IS NOT NULL AND (fk_lobby_member IS NOT DISTINCT FROM fk_squad_lobby OR fk_lobby_member IS NULL) AND fk_lobby_request IS NULL)
+    OR fk_squad_member IS NULL)
+);

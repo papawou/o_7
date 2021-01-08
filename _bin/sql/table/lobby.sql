@@ -10,42 +10,37 @@ CREATE TABLE lobbys(
   privacy lobby_privacy NOT NULL DEFAULT 'DEFAULT'::lobby_privacy,
 
   id_owner integer REFERENCES users NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT NOW()
-);
+  created_at timestamptz NOT NULL DEFAULT NOW(),
 
-CREATE TABLE lobby_slots(
-  id_lobby integer REFERENCES lobbys ON DELETE CASCADE DEFERRABLE PRIMARY KEY,
   free_slots integer NOT NULL DEFAULT 1,
   max_slots integer NOT NULL DEFAULT 2,
   CHECK(0 <= free_slots  AND 1 < max_slots AND free_slots < max_slots)
 );
-ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
-CREATE TABLE lobby_members(
+CREATE TABLE lobby_users(
   id_lobby integer REFERENCES lobbys,
-  id_user integer REFERENCES users UNIQUE,
-  PRIMARY KEY(id_lobby, id_user),
-
-	is_owner boolean NOT NULL DEFAULT FALSE,
-  joined_at timestamptz NOT NULL DEFAULT NOW()
-);
-CREATE UNIQUE INDEX idx_unique_lobby_owner ON lobby_members(id_lobby) WHERE is_owner IS TRUE;
-ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_owner
-  FOREIGN KEY(id, id_owner) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE;
-
-CREATE TABLE lobby_requests(
-  id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   id_user integer REFERENCES users,
   PRIMARY KEY(id_lobby, id_user),
-
-  waiting_approval boolean NOT NULL DEFAULT FALSE,
-  created_at timestamptz NOT NULL DEFAULT NOW(),
-
-  id_creator integer REFERENCES users DEFAULT NULL, --IS NULL ? is_request : is_invitation
-  -- fk_lobby_request_creator (id_lobby, id_user, id_creator) REFERENCES lobby_invitations
-  CHECK(id_user IS DISTINCT FROM id_creator)
+	CHECK(id_lobby<>0),
+  --member
+  fk_member integer REFERENCES users,
+  UNIQUE(id_lobby, fk_member), --FK lobby_users
+  joined_at timestamptz,
+  --request
+  fk_request integer REFERENCES users,
+  UNIQUE(id_lobby, fk_request),
+  waiting_approval boolean,
+  id_creator integer REFERENCES users, --SET TO NULL IF lobby_users.fk_request EXISTS
+  FOREIGN KEY(id_lobby, fk_request, id_creator) REFERENCES lobby_invitations(id_lobby, id_target, id_creator),
+  --ban
+  ban_resolved_at timestamptz,
+  CHECK(
+    ((fk_member IS NOT NULL AND joined_at IS NOT NULL)
+    OR (fk_request IS NOT NULL AND waiting_approval IS NOT NULL)
+    OR (ban_resolved_at < NOW()))
+    AND fk_member IS NOT NULL::integer + fk_request IS NOT NULL::integer + ban_resolved_at < NOW()::integer = 1)
 );
-CREATE UNIQUE INDEX idx_unique_user_request ON lobby_requests(id_user) WHERE id_creator IS NOT NULL;
+CREATE UNIQUE INDEX ON lobby_users(fk_request) WHERE id_creator IS NULL AND fk_request IS NOT NULL;
 
 CREATE TABLE lobby_invitations(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
@@ -56,18 +51,9 @@ CREATE TABLE lobby_invitations(
   CHECK(id_creator<>id_target),
 
 	--FOREIGN KEY(id_creator, id_target) REFERENCES friends?
-  FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_members(id_lobby, id_user) DEFERRABLE,
-  FOREIGN KEY(id_lobby, id_target) REFERENCES lobby_requests(id_lobby, id_user) ON DELETE CASCADE
+  FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_users(id_lobby, fk_member) DEFERRABLE,
+  FOREIGN KEY(id_lobby, id_target) REFERENCES lobby_users(id_lobby, fk_request) ON DELETE CASCADE
 );
-ALTER TABLE lobby_requests
+ALTER TABLE lobby_users
   ADD CONSTRAINT fk_lobby_request_creator
-    FOREIGN KEY(id_lobby, id_user, id_creator) REFERENCES lobby_invitations(id_lobby, id_target, id_creator) DEFERRABLE;
-
-CREATE TABLE lobby_bans(
-  id_lobby integer REFERENCES users,
-  id_user integer REFERENCES users,
-  PRIMARY KEY(id_lobby, id_user),
-
-  created_at timestamptz NOT NULL DEFAULT NOW(),
-  ban_resolved_at timestamptz NOT NULL
-);
+    FOREIGN KEY(id_lobby, fk_request, id_creator) REFERENCES lobby_invitations(id_lobby, id_target, id_creator) DEFERRABLE;

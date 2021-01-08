@@ -89,7 +89,7 @@ BEGIN
   PERFORM FROM user_bans WHERE id_usera=least(_id_viewer, __lobby_params.id_owner) AND id_userb=greatest(_id_viewer, __lobby_params.id_owner);
   IF FOUND THEN RAISE EXCEPTION 'users_block'; END IF;
 
-  PERFORM pg_advisory_lock(hashtextextended('lobby_squad:'||_id_viewer::text, _id_viewer));
+  PERFORM pg_advisory_lock(hashtext('lobby_squad:'||_id_viewer));
   PERFORM FROM squad_users WHERE fk_member=_id_viewer;
   IF FOUND THEN RAISE EXCEPTION 'in a squad'; END IF;
 	PERFORM FROM lobby_requests WHERE id_user=_id_viewer AND id_creator IS NULL AND id_lobby<>_id_lobby;
@@ -125,12 +125,16 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
---todo
-CREATE OR REPLACE FUNCTION lobby_leave(_id_viewer integer, _id_lobby integer) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION lobby_leave(_id_viewer integer, _id_lobby integer, _leave_with_squad boolean) RETURNS boolean AS $$
 DECLARE
   __id_lobby integer;
-  __was_owner boolean;
+--lobby
+  __was_owner boolean DEFAULT false;
   __new_owner integer;
+--squad
+  __id_squad_viewer integer;
+  __is_squad_owner boolean DEFAULT false;
+  __ids_squad_member integer[];
 BEGIN
   SET CONSTRAINTS fk_lobby_owner, fk_lobby_request_creator, lobby_invitations_id_lobby_id_creator_fkey DEFERRED;
 
@@ -139,18 +143,38 @@ BEGIN
     RETURNING id_lobby, is_owner INTO __id_lobby, __was_owner;
 	IF NOT FOUND THEN RAISE EXCEPTION 'not lobby member'; END IF;
 
-  PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_viewer], __id_lobby);
+  SELECT id_owner=_id_viewer INTO __was_owner FROM lobbys WHERE id=_id_lobby FOR SHARE;
+  SELECT id_squad INTO __id_squad_viewer FROM squad_users WHERE fk_member=_id_viewer FOR SHARE;
+	SELECT id_owner=__is_squad_owner INTO __is_squad_owner FROM squads WHERE id=__id_squad_viewer FOR SHARE;
+
+	IF __is_squad_owner AND _leave_with_squad THEN --leave with squad
+		UPDATE squads SET id_lobby=null WHERE id=__id_squad_viewer;
+		WITH cte_deleted_lobby_member AS (
+	    DELETE FROM lobby_members
+	      USING (SELECT fk_member FROM squad_users WHERE id_squad=__id_squad_viewer AND fk_member IS NOT NULL FOR SHARE) squad_members
+	      WHERE id_lobby=_id_lobby AND id_user=squad_members.fk_member
+	      RETURNING lobby_members.id_user
+		)
+		SELECT array_append(array_agg(id_user), _id_viewer) INTO __ids_squad_member FROM cte_deleted_lobby_member;
+		PERFORM FROM lobby_utils_delete_member_invitation(__ids_squad_member, _id_lobby);
+	ELSE
+		IF __id_squad_viewer IS NOT NULL THEN
+			PERFORM FROM squad_leave(_id_viewer, __id_squad_viewer);
+		END IF;
+    PERFORM FROM lobby_utils_delete_member_invitation([_id_viewer], _id_lobby);
+	END IF;
+
   IF __was_owner THEN
-    SELECT id_user INTO __new_owner FROM lobby_members WHERE id_lobby=__id_lobby LIMIT 1 FOR NO KEY UPDATE;
+    SELECT id_user INTO __new_owner FROM lobby_members WHERE id_lobby=__id_lobby LIMIT 1 FOR SHARE;
     IF NOT FOUND THEN --last lobby_member
       DELETE FROM lobbys WHERE id=__id_lobby;
       RETURN true;
     ELSE
-      --todo test lobby_set_owner ?
-      PERFORM lobby_set_owner(_id_viewer,__new_owner,__id_lobby,true);
+      PERFORM lobby_set_owner(_id_viewer,__new_owner,__id_lobby, true);
     END IF;
   END IF;
-  UPDATE lobby_slots SET free_slots=free_slots+1 WHERE id_lobby=__id_lobby;
+
+  UPDATE lobby_slots SET free_slots=free_slots+CASE WHEN array_length(__ids_squad_member,1) > 0 THEN array_length(__ids_squad_member, 1) ELSE 1 END;
   RETURN true;
 END
 $$ LANGUAGE plpgsql;
@@ -521,26 +545,6 @@ BEGIN
 	  IF NOT FOUND THEN RAISE EXCEPTION 'lobby full'; END IF;
 	  PERFORM utils_lobby_squad_join(_id_squad, _id_lobby);
 	END IF;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION lobby_squad_leave(_id_squad integer, _id_lobby integer, _id_viewer integer) RETURNS boolean AS $$
-DECLARE
-  __id_lobby integer;
-  __ids_delete_members integer[];
-BEGIN
-	UPDATE squads SET id_lobby=null
-		WHERE id=_id_squad AND id_owner=_id_viewer AND (id_lobby=_id_lobby OR (_id_lobby IS NULL AND id_lobby IS NOT NULL)) AND waiting_approval IS NULL
-		RETURNING id_lobby INTO __id_lobby;
-
-	WITH cte_deleted_lobby_member AS (
-	  DELETE FROM lobby_members
-	    USING (SELECT fk_member FROM squad_users WHERE id_squad=_id_squad AND fk_member IS NOT NULL FOR SHARE) squad_members
-	    WHERE id_lobby=_id_lobby AND id_user=squad_members.fk_member
-	    RETURNING lobby_members.id_user
-	)
-	SELECT array_agg(id_user) INTO __ids_delete_members FROM cte_deleted_lobby_member;
-	PERFORM FROM lobby_utils_delete_member_invitation(__ids_delete_members, _id_lobby);
 END;
 $$ LANGUAGE plpgsql;
 
