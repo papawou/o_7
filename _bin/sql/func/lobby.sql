@@ -55,8 +55,16 @@ DROP FUNCTION IF EXISTS lobby_create, lobby_join, lobby_leave,
   lobby_set_check_join, lobby_ban_user, lobby_set_privacy, lobby_set_owner, lobby_set_slots CASCADE;
 
 CREATE OR REPLACE FUNCTION lobby_create(_id_viewer integer, _max_slots integer, _check_join boolean, _privacy lobby_privacy, OUT id_lobby_ integer) AS $$
+DECLARE
+  _id_squad integer;
 BEGIN
   SET CONSTRAINTS fk_lobby_owner, fk_lobby_slots DEFERRED;
+  PERFORM pg_advisory_lock(hashtext('lobby_squad:'||_id_viewer));
+  SELECT id_squad INTO _id_squad FROM squad_users WHERE fk_member=_id_viewer FOR SHARE;
+  IF FOUND THEN
+	  SELECT FROM squads WHERE id=_id_squad;
+  END IF;
+
   INSERT INTO lobbys
     (id_owner, check_join, privacy)
     VALUES(_id_viewer, _check_join, _privacy)
@@ -161,7 +169,7 @@ BEGIN
 		IF __id_squad_viewer IS NOT NULL THEN
 			PERFORM FROM squad_leave(_id_viewer, __id_squad_viewer);
 		END IF;
-    PERFORM FROM lobby_utils_delete_member_invitation([_id_viewer], _id_lobby);
+    PERFORM FROM lobby_utils_delete_member_invitation(ARRAY[_id_viewer]::integer[], _id_lobby);
 	END IF;
 
   IF __was_owner THEN
@@ -524,10 +532,10 @@ DECLARE
   __squad_size integer;
   __squad_member record;
 BEGIN
-	SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
+  SELECT check_join, privacy, id_owner INTO __lobby_params FROM lobbys WHERE id=_id_lobby FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
 
-	UPDATE squads SET id_lobby=_id_lobby, waiting_approval=CASE WHEN __lobby_params.check_join THEN true END
+    UPDATE squads SET id_lobby=_id_lobby, waiting_approval=CASE WHEN __lobby_params.check_join THEN true END
 		WHERE id=_id_squad AND id_owner=_id_viewer AND id_lobby IS NULL
 		RETURNING max_slots-free_slots INTO __squad_size;
 	IF NOT FOUND THEN RAISE EXCEPTION 'squad not found'; END IF;
@@ -539,7 +547,6 @@ BEGIN
 				PERFORM FROM lobby_bans WHERE id_user=__squad_member.fk_member AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
         IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
 		END LOOP;
-		RETURN;
 	ELSE
 	  UPDATE lobby_slots SET free_slots=free_slots-__squad_size WHERE id_lobby=_id_lobby AND free_slots-__squad_size>=0;
 	  IF NOT FOUND THEN RAISE EXCEPTION 'lobby full'; END IF;
@@ -568,14 +575,12 @@ DECLARE
   __squad_member record;
 BEGIN
 	FOR __squad_member IN SELECT fk_member FROM squad_users WHERE id_squad=_id_squad ORDER BY fk_member FOR KEY SHARE
-		LOOP
+	LOOP
 	    SELECT pg_advisory_lock(hashtext('lobby_squad:'||__squad_member.fk_member));
-			PERFORM FROM lobby_bans WHERE id_user=__squad_member.fk_member AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
+		PERFORM FROM lobby_bans WHERE id_user=__squad_member.fk_member AND id_lobby=_id_lobby AND ban_resolved_at > NOW();
       IF FOUND THEN RAISE EXCEPTION 'lobby_ban user'; END IF;
-
-			DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__squad_member.fk_member;
-	    INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, __squad_member.fk_member);
+      DELETE FROM lobby_requests WHERE id_lobby=_id_lobby AND id_user=__squad_member.fk_member;
+	  INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, __squad_member.fk_member);
 	END LOOP;
-	RETURN;
 END;
 $$ LANGUAGE plpgsql;
