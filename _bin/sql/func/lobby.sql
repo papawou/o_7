@@ -35,8 +35,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION join_lobby(_id_viewer integer, _id_lobby integer) AS $$
 BEGIN
-  SELECT FROM lobbys WHERE id = _id_lobby FOR SHARE;
-    IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+  SELECT FROM lobbys WHERE id = _id_lobby FOR SHARE; IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
   UPDATE lobby_slots SET free_slots=free_slots-1 WHERE id_lobby = _id_lobby;
   INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, _id_viewer);
 END
