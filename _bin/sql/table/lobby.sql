@@ -8,7 +8,8 @@ CREATE TABLE lobbys(
 CREATE TABLE lobby_slots(
   id_lobby integer PRIMARY KEY REFERENCES lobbys,
   free_slots integer NOT NULL DEFAULT 1,
-  max_slots integer NOT NULL DEFAULT 2
+  max_slots integer NOT NULL DEFAULT 2,
+  CHECK(max_slots >= 2 AND free_slots <= max_slots AND free_slots >= 0)
 );
 ALTER TABLE lobbys ADD CONSTRAINT fk_lobby_slots FOREIGN KEY(id) REFERENCES lobby_slots(id_lobby) DEFERRABLE;
 
