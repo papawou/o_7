@@ -18,12 +18,6 @@ leave_lobby
       lobby UPDATE
 */
 
-CREATE OR REPLACE FUNCTION lock_node(_text text) AS $$
-BEGIN
-  RETURN pg_advisory_lock(hashtext(_text));
-END
-$$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION create_lobby(_id_viewer integer, _max_slots integer, OUT id_lobby_ integer) AS $$
 BEGIN
   INSERT INTO lobbys(id_owner) VALUES(_id_viewer) RETURNING id INTO id_lobby_;
@@ -34,7 +28,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION join_lobby(_id_viewer integer, _id_lobby integer) AS $$
 BEGIN
-  SELECT FROM lobbys WHERE id = _id_lobby FOR SHARE; IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+  PERFORM FROM lobbys WHERE id = _id_lobby FOR SHARE; IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
   UPDATE lobby_slots SET free_slots=free_slots-1 WHERE id_lobby = _id_lobby;
   INSERT INTO lobby_members(id_lobby, id_user) VALUES(_id_lobby, _id_viewer);
 END
@@ -47,8 +41,8 @@ DECLARE
   __slots integer;
 BEGIN
   SELECT id_lobby INTO __id_lobby FROM lobby_members WHERE id_user = _id_viewer; IF NOT FOUND THEN RAISE EXCEPTION 'viewer not in a lobby'; END IF;
-  SELECT FROM lobbys WHERE id = __id_lobby FOR SHARE; IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
-  SELECT FROM lobbys WHERE id = __id_lobby AND id_owner = _id_viewer FOR UPDATE;
+  PERFORM FROM lobbys WHERE id = __id_lobby FOR SHARE; IF NOT FOUND THEN RAISE EXCEPTION 'lobby not found'; END IF;
+  PERFORM FROM lobbys WHERE id = __id_lobby AND id_owner = _id_viewer FOR UPDATE;
   UPDATE lobby_slots SET free_slots=free_slots + 1 WHERE id_lobby = __id_lobby RETURNING max_slots - free_slots INTO __slots;
   DELETE FROM lobby_members WHERE id_lobby = __id_lobby AND id_user = _id_viewer; IF NOT FOUND THEN RAISE EXCEPTION 'viewer lobby_member no longer exist'; END IF;
   IF __id_owner = _id_viewer THEN
