@@ -67,7 +67,9 @@ BEGIN
     ELSE
       WITH cte_new_owner AS (
         SELECT id_user FROM lobby_members WHERE id_lobby = __id_lobby LIMIT 1
-      ) SELECT id_user INTO __id_owner FROM lobby_members WHERE id_lobby = __id_lobby AND id_user = cte_new_owner.id_user FOR KEY SHARE; -- serialization error can occur
+      ) SELECT lobby_members.id_user INTO __id_owner
+                                     FROM lobby_members, cte_new_owner
+                                     WHERE id_lobby = __id_lobby AND lobby_members.id_user = cte_new_owner.id_user FOR KEY SHARE; -- serialization error can occur
       UPDATE lobbys SET id_owner = __id_owner WHERE id = __id_lobby;
       RETURN 3;
     END IF;
