@@ -30,7 +30,7 @@ CREATE TABLE lobby_invitations(
 );
 
 DROP TYPE lobby_request_status;
-CREATE TYPE lobby_request_status AS ENUM ('wait_lobby', 'wait_user', 'inv_wait_lobby');
+CREATE TYPE lobby_request_status AS ENUM ('wait_lobby', 'wait_user');
 CREATE TABLE lobby_requests(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   id_user integer REFERENCES users,
@@ -38,10 +38,8 @@ CREATE TABLE lobby_requests(
   status lobby_request_status NOT NULL DEFAULT 'wait_lobby',
   id_creator integer REFERENCES users,
   FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_members,
-  FOREIGN KEY(id_lobby, id_user, id_creator) REFERENCES lobby_invitations,
-  CHECK (id_creator IS NULL AND (status = 'wait_lobby') OR (id_creator IS NOT NULL AND status  ='inv_wait_lobby'))
+  FOREIGN KEY(id_lobby, id_user, id_creator) REFERENCES lobby_invitations
 );
-
 
 /*
 CREATE TABLE lobby_bans(
