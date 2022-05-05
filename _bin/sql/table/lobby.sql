@@ -30,7 +30,7 @@ CREATE TABLE lobby_invitations(
 );
 
 DROP TYPE lobby_request_status;
-CREATE TYPE lobby_request_status AS ENUM ('wait_lobby', 'wait_user');
+CREATE TYPE lobby_request_status AS ENUM ('wait_lobby', 'wait_user'); --id_creator IS NOT NULL means request is invitation
 CREATE TABLE lobby_requests(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
   id_user integer REFERENCES users,
