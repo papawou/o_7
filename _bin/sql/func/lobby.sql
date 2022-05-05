@@ -134,8 +134,8 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
---invit creator is the only one locking with lobby_request
 CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
+--invit creator is the only one locking with lobby_request
 DECLARE
   __id_lobby integer;
   __id_creator integer;
@@ -145,7 +145,7 @@ BEGIN
   DELETE FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target AND id_creator = _id_viewer; PERFORM raise_except(NOT FOUND, 'invit not found');
   PERFORM FROM lobby_requests WHERE id_lobby=__id_lobby AND id_user = _id_target AND id_creator = _id_viewer FOR SHARE;
   IF FOUND THEN
-    SELECT id_target INTO __id_creator FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target LIMIT 1 FOR KEY SHARE SKIP LOCKED ; --for key share?
+    SELECT id_target INTO __id_creator FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target LIMIT 1 FOR KEY SHARE SKIP LOCKED;
     IF FOUND THEN --still invit left
       UPDATE lobby_requests SET id_creator = __id_creator WHERE id_lobby = __id_lobby AND id_user = _id_target;
     ELSE --no lobby invit left
@@ -179,8 +179,8 @@ END
 $$ LANGUAGE plpgsql;
 */
 
-DROP FUNCTION IF EXISTS lobbyuser_del_invit;
-CREATE OR REPLACE FUNCTION lobbyuser_del_invit(_id_lobby integer, _id_user integer) RETURNS void AS $$
+DROP FUNCTION IF EXISTS lobbyuser_del_invit, lobbyuser_upd_invits;
+CREATE OR REPLACE FUNCTION lobbyuser_del_invits(_id_lobby integer, _id_user integer) RETURNS void AS $$
 DECLARE
   __new_creator integer;
   __tmp_loop integer;
@@ -198,3 +198,14 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION lobbyuser_upd_invits(_id_lobby integer, _id_user integer, _authz bool) RETURNS void AS $$
+DECLARE
+  __tmp_loop integer;
+BEGIN
+  IF NOT _authz THEN RETURN ; END IF;
+  FOR __tmp_loop IN SELECT id_target FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user FOR SHARE
+  LOOP
+    UPDATE lobby_requests SET status = 'wait_user' WHERE id_lobby = _id_lobby AND id_user = __tmp_loop;
+  END LOOP;
+END
+$$ LANGUAGE plpgsql;
