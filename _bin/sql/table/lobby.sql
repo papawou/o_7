@@ -26,7 +26,7 @@ CREATE TABLE lobby_invitations(
   id_target integer REFERENCES users,
   id_creator integer REFERENCES users,
   PRIMARY KEY(id_lobby, id_target, id_creator),
-  FOREIGN KEY (id_lobby, id_creator) REFERENCES lobby_members ON DELETE CASCADE
+  FOREIGN KEY (id_lobby, id_creator) REFERENCES lobby_members DEFERRABLE
 );
 
 DROP TYPE lobby_request_status;
@@ -37,9 +37,10 @@ CREATE TABLE lobby_requests(
   PRIMARY KEY(id_lobby, id_user),
   status lobby_request_status NOT NULL DEFAULT 'wait_lobby',
   id_creator integer REFERENCES users,
-  FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_members,
-  FOREIGN KEY(id_lobby, id_user, id_creator) REFERENCES lobby_invitations
+  -- FOREIGN KEY(id_lobby, id_creator) REFERENCES lobby_members, already enforced by lobby_invitations
+  FOREIGN KEY(id_lobby, id_user, id_creator) REFERENCES lobby_invitations DEFERRABLE
 );
+ALTER TABLE lobby_invitations ADD CONSTRAINT lobby_invitations_request_fkey FOREIGN KEY (id_lobby, id_target) REFERENCES lobby_requests ON DELETE CASCADE;
 
 /*
 CREATE TABLE lobby_bans(
