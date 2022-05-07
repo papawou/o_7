@@ -54,9 +54,9 @@ BEGIN
   PERFORM FROM lobby_members WHERE id_user=_id_viewer AND id_lobby=_id_lobby; PERFORM raise_except(FOUND, 'already lobby member');
   
   SELECT filter_join INTO __filter_join FROM lobbys WHERE id = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby not found');
-  SELECT (CASE WHEN status = 'wait_user'::lobby_request_status THEN 1 WHEN id_creator IS NOT NULL THEN 2 ELSE 3 END) INTO __status FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_viewer FOR SHARE;
+  SELECT (CASE WHEN status = 'wait_user'::lobby_request_status THEN 1 WHEN id_creator IS NOT NULL THEN 2 ELSE 3 END) INTO __status FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_viewer FOR UPDATE; --?FOR SHARE
   IF NOT FOUND AND __filter_join THEN
-    INSERT INTO lobby_requests (id_lobby, id_user, status) VALUES (_id_lobby, _id_viewer, 'wait_lobby'::lobby_request_status); --? ON CONFLICT DO UPDATE SET id_creator = NULL (can be avoid because of lobbyuser advlock)
+    INSERT INTO lobby_requests (id_lobby, id_user, status) VALUES (_id_lobby, _id_viewer, 'wait_lobby'::lobby_request_status); --? ON CONFLICT DO UPDATE SET id_creator = NULL (is avoid by lobbyuser advlock)
     RETURN 0;
   ELSIF __status = 1 THEN
     DELETE FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_viewer;
@@ -86,7 +86,7 @@ DECLARE
 BEGIN
   SET CONSTRAINTS fk_lobby_owner, lobby_requests_id_lobby_id_user_id_creator_fkey, lobby_invitations_id_lobby_id_creator_fkey DEFERRED;
   SELECT id_lobby INTO __id_lobby FROM lobby_members WHERE id_user = _id_viewer; PERFORM raise_except(NOT FOUND, 'viewer not in a lobby');
-  
+
   SELECT id_owner INTO __id_owner FROM lobbys WHERE id = __id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND,'lobby not found');
   IF __id_owner = _id_viewer THEN
     PERFORM FROM lobbys WHERE id = __id_lobby AND id_owner = _id_viewer FOR UPDATE;
@@ -138,7 +138,7 @@ BEGIN
   SELECT id_lobby INTO __id_lobby FROM lobby_members WHERE id_user = _id_viewer;
   
   DELETE FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target AND id_creator = _id_viewer; PERFORM raise_except(NOT FOUND, 'invit not found');
-  PERFORM FROM lobby_requests WHERE id_lobby=__id_lobby AND id_user = _id_target AND id_creator = _id_viewer FOR SHARE;
+  PERFORM FROM lobby_requests WHERE id_lobby=__id_lobby AND id_user = _id_target AND id_creator = _id_viewer FOR UPDATE;
   IF FOUND THEN
     SELECT id_creator INTO __id_creator FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target LIMIT 1 FOR KEY SHARE SKIP LOCKED;
     IF FOUND THEN --still invit left
@@ -183,7 +183,7 @@ BEGIN
   SET CONSTRAINTS lobby_requests_id_lobby_id_user_id_creator_fkey DEFERRED;
   FOR __tmp_loop IN DELETE FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user RETURNING id_target
   LOOP
-    PERFORM FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_loop AND id_creator = _id_user FOR SHARE;
+    PERFORM FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_loop AND id_creator = _id_user FOR UPDATE;
     IF NOT FOUND THEN CONTINUE; END IF;
     SELECT id_creator INTO __new_creator FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_target = __tmp_loop LIMIT 1 FOR KEY SHARE SKIP LOCKED;
     IF FOUND THEN
