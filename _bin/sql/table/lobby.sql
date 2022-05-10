@@ -29,7 +29,7 @@ CREATE TABLE lobby_invitations(
   FOREIGN KEY (id_lobby, id_creator) REFERENCES lobby_members DEFERRABLE
 );
 
-DROP TYPE lobby_request_status;
+DROP TYPE IF EXISTS lobby_request_status;
 CREATE TYPE lobby_request_status AS ENUM ('wait_lobby', 'wait_user'); --id_creator IS NOT NULL means request is invitation
 CREATE TABLE lobby_requests(
   id_lobby integer REFERENCES lobbys ON DELETE CASCADE,
