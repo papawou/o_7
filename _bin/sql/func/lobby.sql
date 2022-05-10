@@ -52,8 +52,8 @@ DECLARE
 BEGIN
   PERFORM lock_lobbyuser(false, _id_viewer);
   PERFORM FROM lobby_members WHERE id_user=_id_viewer AND id_lobby=_id_lobby; PERFORM raise_except(FOUND, 'already lobby member');
-  
   SELECT filter_join INTO __filter_join FROM lobbys WHERE id = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby not found');
+  
   SELECT (CASE WHEN status = 'wait_user'::lobby_request_status THEN 1 WHEN id_creator IS NOT NULL THEN 2 ELSE 3 END) INTO __status FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_viewer FOR UPDATE; --?FOR SHARE
   IF NOT FOUND AND __filter_join THEN
     INSERT INTO lobby_requests (id_lobby, id_user, status) VALUES (_id_lobby, _id_viewer, 'wait_lobby'::lobby_request_status); --? ON CONFLICT DO UPDATE SET id_creator = NULL (is avoid by lobbyuser advlock)
@@ -61,7 +61,7 @@ BEGIN
   ELSIF __status = 1 THEN
     DELETE FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_viewer;
   ELSIF __status = 2 THEN
-    UPDATE lobby_requests SET  id_creator = NULL WHERE id_lobby = _id_lobby AND id_user = _id_viewer;
+    UPDATE lobby_requests SET  id_creator = NULL WHERE id_lobby = _id_lobby AND id_user = _id_viewer; --disable if its inv only
     RETURN 2;
   ELSIF __status = 3 THEN
     PERFORM raise_except(true, 'lobbyrequest already exist');
@@ -84,26 +84,29 @@ DECLARE
   __id_owner integer;
   __slots integer;
 BEGIN
-  SET CONSTRAINTS fk_lobby_owner, lobby_requests_id_lobby_id_user_id_creator_fkey, lobby_invitations_id_lobby_id_creator_fkey DEFERRED;
+  SET CONSTRAINTS fk_lobby_owner, lobby_invitations_id_lobby_id_creator_fkey DEFERRED;
   SELECT id_lobby INTO __id_lobby FROM lobby_members WHERE id_user = _id_viewer; PERFORM raise_except(NOT FOUND, 'viewer not in a lobby');
-
   SELECT id_owner INTO __id_owner FROM lobbys WHERE id = __id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND,'lobby not found');
+  
   IF __id_owner = _id_viewer THEN
-    PERFORM FROM lobbys WHERE id = __id_lobby AND id_owner = _id_viewer FOR UPDATE;
+    PERFORM FROM lobbys WHERE id = __id_lobby FOR UPDATE;
     UPDATE lobby_slots SET free_slots = free_slots + 1 WHERE id_lobby = __id_lobby RETURNING max_slots - free_slots INTO __slots;
     IF __slots = 0 THEN
       DELETE FROM lobbys WHERE id = __id_lobby;
       RETURN 2;
     END IF;
   END IF;
+  
   DELETE FROM lobby_members WHERE id_lobby = __id_lobby AND id_user = _id_viewer; PERFORM raise_except(NOT FOUND,'serialization error, viewer lobby_member no longer exist');
   PERFORM lobbyuser_cancel_invits(__id_lobby, _id_viewer);
+  
   IF __id_owner = _id_viewer THEN
-    SELECT id_user INTO __id_owner FROM lobby_members WHERE id_lobby = __id_lobby FOR SHARE LIMIT 1; --FOR UPDATE? because new owner got his authz upd ?
+    SELECT id_user INTO __id_owner FROM lobby_members WHERE id_lobby = __id_lobby FOR NO KEY UPDATE LIMIT 1; --FOR SHARE? not because new owner got his authz upd ?
     UPDATE lobbys SET id_owner = __id_owner WHERE id = __id_lobby;
     PERFORM lobbyuser_accept_invits(__id_lobby, _id_viewer);
     RETURN 3;
   END IF;
+  
   UPDATE lobby_slots SET free_slots = free_slots + 1 WHERE id_lobby = __id_lobby RETURNING max_slots - free_slots INTO __slots;
   RETURN 1;
 END
@@ -120,33 +123,38 @@ BEGIN
   PERFORM FROM lobby_members WHERE id_lobby = _id_lobby AND id_user = _id_target; PERFORM raise_except(FOUND, 'target already member');
   
   SELECT (id_owner = _id_viewer OR filter_join IS FALSE) INTO __authz FROM lobbys WHERE id = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby not found');
+  SELECT FROM lobby_members WHERE id_user = _id_viewer AND id_lobby = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby_member not found');
+  
   INSERT INTO lobby_requests(id_lobby, id_user, status, id_creator)
     VALUES(_id_lobby, _id_target, CASE WHEN __authz THEN 'wait_user'::lobby_request_status ELSE 'wait_lobby'::lobby_request_status END, _id_viewer)
-    ON CONFLICT (id_lobby, id_user) DO UPDATE SET status=CASE lobby_requests.status WHEN 'wait_user'::lobby_request_status THEN 'wait_user'::lobby_request_status ELSE EXCLUDED.status END;
+    ON CONFLICT (id_lobby, id_user) DO UPDATE SET status='wait_user'::lobby_request_status WHERE EXCLUDED.status = 'wait_user' AND status <> 'wait_user';
+  --concurrency_A lobby_request can get deleted and created with status weaker than status provided by viewer.authz
+  IF NOT FOUND THEN
+    PERFORM FROM lobby_requests WHERE id_lobby= _id_lobby AND id_user = _id_target AND (NOT __authz OR (__authz AND status = 'wait_user')) FOR SHARE; PERFORM raise_except(NOT FOUND, 'serialization error: concurrency_A');
+  END IF;
   INSERT INTO lobby_invitations(id_lobby, id_target, id_creator) VALUES (_id_lobby, _id_target, _id_viewer);
   RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION lobby_invite_cancel(_id_viewer integer, _id_target integer) RETURNS boolean AS $$
---invit creator is the only one locking with lobby_request
 DECLARE
   __id_lobby integer;
   __id_creator integer;
 BEGIN
   SET CONSTRAINTS lobby_requests_id_lobby_id_user_id_creator_fkey DEFERRED;
-  SELECT id_lobby INTO __id_lobby FROM lobby_members WHERE id_user = _id_viewer;
-  
-  DELETE FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target AND id_creator = _id_viewer; PERFORM raise_except(NOT FOUND, 'invit not found');
-  PERFORM FROM lobby_requests WHERE id_lobby=__id_lobby AND id_user = _id_target AND id_creator = _id_viewer FOR UPDATE;
-  IF FOUND THEN
-    SELECT id_creator INTO __id_creator FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target LIMIT 1 FOR KEY SHARE SKIP LOCKED;
-    IF FOUND THEN --still invit left
-      UPDATE lobby_requests SET id_creator = __id_creator WHERE id_lobby = __id_lobby AND id_user = _id_target;
-    ELSE --no lobby invit left
-      DELETE FROM lobby_requests WHERE id_lobby = __id_lobby AND id_user = _id_target;
+  SELECT id_creator INTO __id_creator FROM lobby_requests WHERE id_lobby = __id_lobby AND id_user = _id_target FOR SHARE;
+  IF __id_creator = _id_viewer THEN
+    PERFORM FROM lobby_requests WHERE id_lobby = __id_lobby AND id_user = _id_target FOR UPDATE;
+    SELECT id_creator INTO __id_creator FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target AND id_creator <> _id_viewer LIMIT 1 FOR KEY SHARE;
+    IF FOUND THEN
+      UPDATE lobby_requests SET id_creator = __id_creator WHERE id_lobby = __id_lobby AND id_user == _id_target;
+    ELSE
+      DELETE FROM lobby_requests WHERE id_lobby = __id_lobby AND id_user = _id_target AND id_creator = _id_viewer;
+      RETURN TRUE;
     END IF;
   END IF;
+  DELETE FROM lobby_invitations WHERE id_lobby = __id_lobby AND id_target = _id_target AND id_creator = _id_viewer;
   RETURN FOUND;
 END
 $$ LANGUAGE plpgsql;
@@ -177,20 +185,23 @@ $$ LANGUAGE plpgsql;
 DROP FUNCTION IF EXISTS lobbyuser_cancel_invits, lobbyuser_accept_invits;
 CREATE OR REPLACE FUNCTION lobbyuser_cancel_invits(_id_lobby integer, _id_user integer) RETURNS void AS $$
 DECLARE
-  __new_creator integer;
-  __tmp_loop integer;
+  __id_creator integer;
+  __tmp_id_target integer;
 BEGIN
-  SET CONSTRAINTS lobby_requests_id_lobby_id_user_id_creator_fkey DEFERRED;
-  FOR __tmp_loop IN DELETE FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user RETURNING id_target
+  FOR __tmp_id_target IN SELECT id_target FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user ORDER BY id_target
   LOOP
-    PERFORM FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_loop AND id_creator = _id_user FOR UPDATE;
-    IF NOT FOUND THEN CONTINUE; END IF;
-    SELECT id_creator INTO __new_creator FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_target = __tmp_loop LIMIT 1 FOR KEY SHARE SKIP LOCKED;
-    IF FOUND THEN
-      UPDATE lobby_requests SET id_creator = __new_creator  WHERE id_lobby = _id_lobby AND id_user = __tmp_loop ;
-    ELSE
-      DELETE FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_loop AND id_creator = _id_user;
+    SELECT id_creator INTO __id_creator FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_id_target FOR SHARE;
+    IF __id_creator = _id_user THEN
+      PERFORM FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_id_target FOR UPDATE;
+      SELECT id_creator INTO __id_creator FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_target = __tmp_id_target AND id_creator <> _id_user LIMIT 1 FOR KEY SHARE;
+      IF FOUND THEN
+        UPDATE lobby_requests SET id_creator = __id_creator WHERE id_lobby = _id_lobby AND id_user == __tmp_id_target;
+      ELSE
+        DELETE FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = __tmp_id_target AND id_creator = _id_user;
+        CONTINUE ;
+      END IF;
     END IF;
+    DELETE FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_target = __tmp_id_target AND id_creator = _id_user;
   END LOOP;
 END
 $$ LANGUAGE plpgsql;
@@ -199,7 +210,7 @@ CREATE OR REPLACE FUNCTION lobbyuser_accept_invits(_id_lobby integer, _id_user i
 DECLARE
   __tmp_loop integer;
 BEGIN
-  FOR __tmp_loop IN SELECT id_target FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user FOR SHARE
+  FOR __tmp_loop IN SELECT id_target FROM lobby_invitations WHERE id_lobby = _id_lobby AND id_creator = _id_user
   LOOP
     UPDATE lobby_requests SET status = 'wait_user'::lobby_request_status WHERE id_lobby = _id_lobby AND id_user = __tmp_loop AND status != 'wait_user'::lobby_request_status;
   END LOOP;
