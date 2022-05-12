@@ -125,13 +125,14 @@ BEGIN
   SELECT (id_owner = _id_viewer OR filter_join IS FALSE) INTO __authz FROM lobbys WHERE id = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby not found');
   PERFORM FROM lobby_members WHERE id_user = _id_viewer AND id_lobby = _id_lobby FOR SHARE; PERFORM raise_except(NOT FOUND, 'lobby_member not found');
   
-  INSERT INTO lobby_requests(id_lobby, id_user, status, id_creator)
-    VALUES(_id_lobby, _id_target, CASE WHEN __authz THEN 'wait_user'::lobby_request_status ELSE 'wait_lobby'::lobby_request_status END, _id_viewer)
-    ON CONFLICT (id_lobby, id_user) DO UPDATE SET status='wait_user'::lobby_request_status WHERE EXCLUDED.status = 'wait_user' AND lobby_requests.status <> 'wait_user';
-  --concurrency_A lobby_request can get deleted and created with status weaker than status provided by viewer.authz
-  IF NOT FOUND THEN
-    PERFORM FROM lobby_requests WHERE id_lobby= _id_lobby AND id_user = _id_target AND (NOT __authz OR (__authz AND status = 'wait_user')) FOR SHARE; PERFORM raise_except(NOT FOUND, 'serialization error: concurrency_A');
-  END IF;
+  LOOP --upsert or lock share row and insure right status is given
+    INSERT INTO lobby_requests(id_lobby, id_user, status, id_creator)
+      VALUES(_id_lobby, _id_target, CASE WHEN __authz THEN 'wait_user'::lobby_request_status ELSE 'wait_lobby'::lobby_request_status END, _id_viewer)
+      ON CONFLICT (id_lobby, id_user) DO UPDATE SET status='wait_user'::lobby_request_status WHERE EXCLUDED.status = 'wait_user' AND lobby_requests.status <> 'wait_user';
+    EXIT WHEN FOUND;
+    PERFORM FROM lobby_requests WHERE id_lobby = _id_lobby AND id_user = _id_target AND ((status = 'wait_user' AND __authz) OR NOT __authz)  FOR SHARE;
+    EXIT WHEN FOUND;
+  END LOOP;
   INSERT INTO lobby_invitations(id_lobby, id_target, id_creator) VALUES (_id_lobby, _id_target, _id_viewer);
   RETURN FOUND;
 END
